@@ -75,6 +75,7 @@ def main():
     parser.add_argument("--api-url", default=os.getenv("UPLOAD_URL", ""), help="Laptop API base URL, e.g. http://192.168.1.20:8000 (empty=no uploads)")
     parser.add_argument("--upload-token", default=os.getenv("UPLOAD_TOKEN", ""), help="Shared secret sent as X-Upload-Token")
     parser.add_argument("--camera-id", default="pi-makeline-1", help="Fixed name for this camera in meta.json")
+    parser.add_argument("--stream-port", type=int, default=0, help="Serve a live view + box editor on this port (e.g. 8090)")
     parser.add_argument("--snapshot", metavar="PATH", help="Save one frame to PATH and exit (draw zones from it on a laptop)")
     args = parser.parse_args()
 
@@ -125,6 +126,14 @@ def main():
     trigger = MotionTrigger(zones, test_frame.shape) if zones else None
     pipe = PiPipeline(zones, test_frame.shape, cutter, camera_id=args.camera_id, trigger=trigger) if zones else None
 
+    stream = None
+    if args.stream_port:   # live feed + box editor in the laptop's browser (headless boards)
+        from stream import StreamState, serve
+        stream = StreamState(zones, w, h, key=args.upload_token)
+        serve(stream, args.stream_port)
+        print(f"[main] live view + box editor: http://<this-board>:{args.stream_port}"
+              + ("/?key=<upload token>" if args.upload_token else ""))
+
     zone_state: dict[str, bool] = {}
     frame_interval = 1.0 / args.fps
     grab_count = 0
@@ -165,6 +174,29 @@ def main():
                 grab_count += 1
                 if worker:
                     worker.nudge()
+
+        # browser live view; boxes saved there are swapped in here
+        if stream:
+            new = stream.take_pending()
+            if new is not None:
+                if pipe:
+                    for folder in pipe.flush():   # ship any grab waiting out its merge window first
+                        grab_count += 1
+                        if worker:
+                            worker.nudge()
+                tmp = ZONES_PATH + ".tmp"
+                with open(tmp, "w") as f:
+                    json.dump(new, f, indent=1)
+                os.replace(tmp, ZONES_PATH)
+                zones = new
+                trigger = MotionTrigger(zones, frame.shape) if zones else None
+                pipe = PiPipeline(zones, frame.shape, cutter, camera_id=args.camera_id, trigger=trigger) if zones else None
+                zone_state = {}
+                with stream.lock:
+                    stream.zones = zones
+                print(f"[main] new boxes from the browser: {[z['name'] for z in zones]} (saved to zones.json)")
+            active = {z.name: z.active for z in trigger.zones} if trigger else {}
+            stream.publish(frame, active, f"grabs: {grab_count}" + ("" if zones else "  (no boxes yet)"))
 
         # live preview
         if args.show:
