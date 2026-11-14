@@ -41,17 +41,18 @@ def split_claims(text: str) -> list[str]:
     sentence (question or not) with a number or an accusation. Fails closed: a substantive
     message with no extracted claims is checked as a whole."""
     parts = re.split(r"(?<=[.!?])\s+|\n+", text.strip())
-    claims = []
+    claims, neutral_questions = [], 0
     for p in (s.strip() for s in parts):
         if not p:
             continue
         risky = bool(re.search(r"\d", p) or ACCUSE.search(p))
         if p.endswith("?") and not risky:
+            neutral_questions += 1
             continue
         if not risky and len(p.split()) < 4:
             continue
         claims.append(p)
-    if not claims and len(text.split()) >= 4:
+    if not claims and not neutral_questions and len(text.split()) >= 4:
         claims = [text.strip()]
     return claims
 
