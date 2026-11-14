@@ -131,11 +131,61 @@ def numbers_check(claim: str, evidence: str) -> bool | str | None:
             if isinstance(obj.get(a), (int, float)) and isinstance(obj.get(b), (int, float)):
                 derived.add(abs(obj[a] - obj[b]))
 
+    if _swapped(claim, evidence, close):
+        return False   # a number that belongs to a DIFFERENT item than the one it's said about
     direct = [any(close(n, e) for e in pool) for n in nums]
     if all(direct):
         return True
     if all(d or any(close(n, x) for x in derived) for n, d in zip(nums, direct)):
         return "derived"   # plausible arithmetic: not blocked, but not boosted either (d1 judges meaning)
+    return False
+
+
+def _item_records(evidence: str) -> dict[str, set[float]]:
+    """Numbers per item, from every JSON record in the evidence that names an item."""
+    out: dict[str, set[float]] = {}
+    for rec in re.findall(r"\{[^{}]*\}", evidence):
+        try:
+            obj = json.loads(rec)
+        except ValueError:
+            continue
+        name = obj.get("item")
+        if not isinstance(name, str):
+            continue
+        nums = {float(v) for v in obj.values() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+        for a, b in (("par", "on_hand"), ("actual", "theoretical")):   # named differences in the record
+            if isinstance(obj.get(a), (int, float)) and isinstance(obj.get(b), (int, float)):
+                nums.add(abs(obj[a] - obj[b]))
+        out.setdefault(name.lower(), set()).update(nums)
+    return out
+
+
+def _swapped(claim: str, evidence: str, close) -> bool:
+    """True if a number in the claim sits next to item X but only appears in OTHER items' records.
+    Catches "9 sprites and 10 cokes" when the truth is 10 sprites and 9 cokes: both numbers exist
+    somewhere in the evidence, so the plain number check alone passes (review, Nov 14)."""
+    recs = _item_records(evidence)
+    if len(recs) < 2:
+        return False
+    other_text = re.sub(r"\{[^{}]*\"item\"[^{}]*\}", " ", evidence)   # evidence outside item records
+    loose = set(_numbers(other_text))
+    low = claim.lower()
+    mentions = []   # (position, item)
+    for name in recs:
+        for form in {name, name.replace("_", " ")}:
+            for m in re.finditer(rf"\b{re.escape(form)}(?:s|es)?\b", low):
+                mentions.append((m.start(), name))
+    if not mentions:
+        return False
+    text = _IDS.sub(lambda m: " " * len(m.group()), _DATES.sub(lambda m: " " * len(m.group()), low))
+    for m in _NUM.finditer(text):
+        n = float(m.group().replace(",", ""))
+        item = min(mentions, key=lambda x: abs(x[0] - m.start()))[1]
+        if any(close(n, e) for e in recs[item]):
+            continue
+        elsewhere = any(close(n, e) for it, ns in recs.items() if it != item for e in ns)
+        if elsewhere and not any(close(n, e) for e in loose):
+            return True
     return False
 
 
