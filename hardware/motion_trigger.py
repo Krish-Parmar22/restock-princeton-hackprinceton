@@ -38,7 +38,7 @@ class MotionTrigger:
         min_diff_pixels: float = 0.004, # fraction of the zone that must be moving
         diff_lag: int = 4,           # compare to the frame this many frames back (~0.27 s at 15 fps)
         active_learning_rate: float = 0.0005,  # MOG2 learning while a grab is active (auto when idle)
-        static_timeout: float = 6.0, # end a grab after this long with no movement, even if the
+        static_timeout: float = 4.0, # end a grab after this long with no movement, even if the
                                      # zone still differs from the background (e.g. a resting hand)
         max_duration: float = 60.0,  # never let one grab run longer than this (constant motion)
     ):

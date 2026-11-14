@@ -23,7 +23,7 @@ from grab_cutter import GrabCutter
 from motion_trigger import MotionTrigger
 
 MAX_DURING_KEPT = 30   # cap memory on very long grabs
-MERGE_S = 2.0          # quiet time before a grab is final; motion sooner = same grab
+MERGE_S = 1.5          # quiet time before a grab is final; motion sooner = same grab
 
 
 @dataclass
