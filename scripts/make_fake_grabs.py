@@ -70,6 +70,7 @@ def make(out: Path, day: str) -> list[Path]:
             "grab_id": grab_id, "camera_id": "fake0", "zone": zone,
             "t_start": t0.isoformat(), "t_end": t_end.isoformat(),
             "frame_times": [t.isoformat() for t in frame_times], "source": "fake",
+            "zone_polygon": [[170, 120], [470, 120], [470, 380], [170, 380]],  # the drawn bin
             "_truth": {"action": action, "k": k},  # ground truth, for tests only
         }
         (folder / "meta.json").write_text(json.dumps(meta, indent=2))

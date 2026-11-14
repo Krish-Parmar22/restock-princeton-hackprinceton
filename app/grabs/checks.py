@@ -7,9 +7,18 @@ The state text of each request says which image position is which.
 """
 from __future__ import annotations
 
+import logging
+from typing import TYPE_CHECKING, Callable
+
 from app.config import settings
+
+if TYPE_CHECKING:
+    from app.grabs.yolo import HandCheck
+
 from app.contracts import GrabPackage
 from app.d1.base import D1Answer, D1Client, D1Question
+
+log = logging.getLogger("grabs.checks")
 
 MAX_DURING = 6  # d1 takes <= 8 images per request: BEFORE + up to 6 DURING + AFTER
 BIN_TO_ACTION = {"emptier": "took", "fuller": "put_back", "same": "touched"}
@@ -147,13 +156,24 @@ def decide(answers: dict[str, D1Answer], min_prob: float, zone: str | None = Non
     }
 
 
-def check_grab(pkg: GrabPackage, items: list[str], client: D1Client) -> tuple[dict, list[dict]]:
-    """Ask d1 about one grab package. Returns (row, d1_answers) for app.ledger.api.record_grab."""
+def check_grab(pkg: GrabPackage, items: list[str], client: D1Client,
+               hand_check: Callable[[GrabPackage], "HandCheck"] | None = None) -> tuple[dict, list[dict]]:
+    """Ask d1 about one grab package, then (optionally) double-check with YOLO-World that a hand
+    was really inside the bin's zone. Returns (row, d1_answers) for app.ledger.api.record_grab."""
     answers: dict[str, D1Answer] = {}
     for req in build_questions(pkg, items):
         answers.update(client.ask(req["questions"], req["state"], req["images"]))
 
     d = decide(answers, settings.autolog_min_prob, zone=pkg.meta.zone)
+    yolo = None
+    if hand_check is not None:
+        try:
+            yolo = hand_check(pkg)
+        except Exception as e:  # YOLO is a double-check: if it breaks, d1's answer stands, but say so
+            log.warning("YOLO check failed for %s: %s", pkg.meta.grab_id, e)
+        if yolo is not None and d["action"] in ("took", "put_back") and not yolo.hand_seen:
+            d["reasons"].append(f"d1 says {d['action']} but YOLO saw no hand in the {pkg.meta.zone} zone")
+            d["status"] = "flagged"
     m = pkg.meta
     row = {
         "grab_id": m.grab_id, "zone": m.zone, "camera_id": m.camera_id, "source": m.source,
@@ -163,4 +183,8 @@ def check_grab(pkg: GrabPackage, items: list[str], client: D1Client) -> tuple[di
         "frames": pkg.frames_json(),
     }
     d1_answers = [{"question_id": qid, "answer": a.answer, "probs": a.probs} for qid, a in answers.items()]
+    if yolo is not None:  # stored next to d1's answers so the dashboard/trace can show both votes
+        d1_answers.append({"question_id": "yolo_hand_in_zone", "answer": "yes" if yolo.hand_seen else "no",
+                           "probs": {"best_conf": yolo.best_conf, "frames_with_hand": yolo.frames_with_hand_in_zone,
+                                     "frames_checked": yolo.frames_checked}})
     return row, d1_answers

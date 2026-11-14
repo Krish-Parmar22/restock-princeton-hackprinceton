@@ -352,3 +352,44 @@ def test_zone_and_d1_item_disagree_is_flagged(pkg):
     row, _ = check_grab(pkg, ITEMS, FakeD1(p=0.95, overrides={"item": ("cheese", 0.95)}))
     assert pkg.meta.zone != "cheese"
     assert row["status"] == "flagged" and row["item"] == "cheese"
+
+
+# ---------- YOLO-World hand-in-zone double-check ----------
+
+def _hand(seen: bool):
+    from app.grabs.yolo import HandCheck
+    return lambda pkg: HandCheck(frames_checked=4, frames_with_hand_in_zone=2 if seen else 0, best_conf=0.4 if seen else 0.0)
+
+
+def test_yolo_agrees_keeps_logged_and_stores_its_vote(pkg):
+    row, answers = check_grab(pkg, ITEMS, FakeD1(p=0.95), hand_check=_hand(True))
+    assert row["status"] == "logged"
+    vote = next(a for a in answers if a["question_id"] == "yolo_hand_in_zone")
+    assert vote["answer"] == "yes" and vote["probs"]["frames_with_hand"] == 2
+
+
+def test_yolo_sees_no_hand_flags_a_took(pkg):
+    row, _ = check_grab(pkg, ITEMS, FakeD1(p=0.95), hand_check=_hand(False))
+    assert row["action"] == "took" and row["status"] == "flagged"
+
+
+def test_yolo_no_hand_doesnt_matter_for_touched(pkg):
+    row, _ = check_grab(pkg, ITEMS, FakeD1(p=0.95, overrides={"bin_change": ("same", 0.95), "action": ("touched", 0.95)}),
+                        hand_check=_hand(False))
+    assert row["action"] == "touched" and row["status"] == "logged"
+
+
+def test_yolo_crash_falls_back_to_d1(pkg):
+    def boom(p):
+        raise RuntimeError("weights missing")
+    row, answers = check_grab(pkg, ITEMS, FakeD1(p=0.95), hand_check=boom)
+    assert row["status"] == "logged" and not any(a["question_id"] == "yolo_hand_in_zone" for a in answers)
+
+
+def test_zone_overlap_math():
+    from app.grabs.yolo import _overlap_in_zone
+    zone = [[100, 100], [300, 100], [300, 300], [100, 300]]
+    assert _overlap_in_zone((150, 150, 250, 250), zone, None) == 1.0
+    assert _overlap_in_zone((400, 400, 500, 500), zone, None) == 0.0
+    assert 0.4 < _overlap_in_zone((200, 150, 400, 250), zone, None) < 0.6
+    assert _overlap_in_zone((0, 0, 10, 10), None, None) == 1.0   # no polygon: whole frame

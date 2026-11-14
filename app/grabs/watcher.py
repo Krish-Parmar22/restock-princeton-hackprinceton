@@ -50,6 +50,7 @@ class GrabWatcher:
         record_fn: Callable[[dict, list[dict]], None] = _record,
         settle_s: float = 1.0,
         backoff_base_s: float = 2.0,
+        hand_check: Callable | None = None,
     ):
         self.dir = Path(grabs_dir or settings.grabs_dir)
         if client is None:
@@ -59,6 +60,7 @@ class GrabWatcher:
         self.client = client
         self.items_fn, self.record_fn, self.settle_s = items_fn, record_fn, settle_s
         self.backoff_base_s = backoff_base_s
+        self.hand_check = hand_check
         self.state_path = self.dir / PROCESSED_FILE
         self.processed: set[str] = self._load_state()
         self.failures: dict[str, dict] = {}  # folder name -> {"count", "next_try", "error"}
@@ -166,7 +168,7 @@ class GrabWatcher:
         for pkg in pkgs:
             gid, key = pkg.meta.grab_id, pkg.before.parent.name  # key = folder name, everywhere
             try:
-                row, answers = check_grab(pkg, items, self.client)
+                row, answers = check_grab(pkg, items, self.client, self.hand_check)
                 self.record_fn(row, answers)
             except Exception as e:
                 self._fail(key, e)
