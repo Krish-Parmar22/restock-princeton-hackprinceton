@@ -116,6 +116,20 @@ class DemoApi:
         return [{"ts": (now - timedelta(minutes=m)).isoformat(), "chat_id": "demo-owner", "text": t,
                  "d1_score": s, "decision": dec} for m, t, s, dec in rows][:limit]
 
+    def orders(self, limit: int = 30) -> list[dict]:
+        return []
+
+    def reorder_plan(self) -> dict:
+        import math
+        items = [{"item": r["item"], "unit": r["unit"], "on_hand": r["on_hand"], "par": r["par"],
+                  "order_qty": math.ceil(2 * r["par"] - r["on_hand"]), "unit_cost": r["unit_cost"],
+                  "cost": round(math.ceil(2 * r["par"] - r["on_hand"]) * r["unit_cost"], 2)}
+                 for r in self.inventory() if r["on_hand"] < r["par"]]
+        return {"items": items, "total_cost": round(sum(i["cost"] for i in items), 2)}
+
+    def send_plan(self) -> list[dict]:
+        return []
+
     def confirm(self, grab_id: str, action: str, item: str, qty_label: str) -> dict:
         self._confirmed[grab_id] = {"action": action, "item": item, "qty_label": qty_label, "confidence": 1.0}
         day = date.fromisoformat(grab_id[:10])

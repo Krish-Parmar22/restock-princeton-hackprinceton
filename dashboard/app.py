@@ -136,7 +136,11 @@ h1, h2 = st.columns([3, 1])
 h1.title("Today at the shop")
 h1.caption(today.strftime("%A, %B %-d"))
 try:
-    sheet = workbook_bytes(inventory, today, load("grabs", today, "all"))
+    try:
+        orders = load("orders", 50)
+    except ApiError:
+        orders = []
+    sheet = workbook_bytes(inventory, today, load("grabs", today, "all"), orders)
     h2.download_button("⬇ Download today's sheet", sheet, file_name=f"inventory-{today}.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                        type="primary", width="stretch")
@@ -157,6 +161,41 @@ for chunk in [low_first[i:i + 4] for i in range(0, len(low_first), 4)]:
             </div>""",
             unsafe_allow_html=True,
         )
+
+# ---------- reorder plan + orders ----------
+st.subheader("Reorder")
+try:
+    plan = load("reorder_plan")
+except ApiError as e:
+    plan = {"items": [], "total_cost": 0}
+    st.error(str(e))
+p1, p2 = st.columns([3, 1])
+if plan["items"]:
+    p1.markdown(f"**Below par now: {len(plan['items'])} item(s), ${plan['total_cost']:,.2f} to restock** "
+                "(each back up to 2× par)")
+    p1.dataframe(pd.DataFrame([{"Item": label(i["item"]).title(), "On hand": f"{i['on_hand']:g} {i['unit']}",
+                                "Par": i["par"], "Order": i["order_qty"], "Cost": i["cost"]} for i in plan["items"]]),
+                 hide_index=True, width="stretch", column_config={"Cost": st.column_config.NumberColumn(format="$%.2f")})
+else:
+    p1.caption("Everything is at or above par. Nothing to order.")
+if p2.button("📱 Text me this plan", type="primary", disabled=not (can_edit and plan["items"]),
+             help="The agent texts the plan; reply yes on your phone to order."):
+    try:
+        out = a.send_plan()
+        st.toast("Sent to your phone. Reply yes there to order." if out else "No owner phone has texted the line yet.")
+    except ApiError as e:
+        st.error(str(e))
+try:
+    orders_list = load("orders", 30)
+except ApiError:
+    orders_list = []
+if orders_list:
+    with st.expander(f"Orders ({len(orders_list)})", expanded=False):
+        st.dataframe(pd.DataFrame([{
+            "Placed": datetime.fromisoformat(o["ts"]).strftime("%a %-I:%M %p"), "Item": label(o["item"]).title(),
+            "Qty": f"{o['qty']:g} {o['unit']}", "Cost": o["cost"], "Status": o["status"],
+        } for o in orders_list]), hide_index=True, width="stretch",
+            column_config={"Cost": st.column_config.NumberColumn(format="$%.2f")})
 
 # ---------- needs your OK ----------
 try:

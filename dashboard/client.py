@@ -50,6 +50,22 @@ class Api:
     def messages(self, limit: int = 50) -> list[dict]:
         return self._get("/api/messages", limit=limit)
 
+    def orders(self, limit: int = 30) -> list[dict]:
+        return self._get("/api/orders", limit=limit)
+
+    def reorder_plan(self) -> dict:
+        return self._get("/api/reorder-plan")
+
+    def send_plan(self) -> list[dict]:
+        """Ask the agent to text the owner today's reorder plan (they approve by replying yes)."""
+        try:
+            r = self.http.post("/api/reorder-plan/send", timeout=120)
+        except httpx.HTTPError as e:
+            raise ApiError(f"can't reach the agent API: {e}") from e
+        if r.status_code != 200:
+            raise ApiError(f"send plan -> {r.status_code}: {r.text[:200]}")
+        return r.json()
+
     def confirm(self, grab_id: str, action: str, item: str, qty_label: str) -> dict:
         try:
             r = self.http.post(f"/api/grabs/{grab_id}/confirm",
