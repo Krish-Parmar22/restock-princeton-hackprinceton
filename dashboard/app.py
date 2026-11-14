@@ -5,6 +5,7 @@ Reads the agent API at API_URL (default http://localhost:8000). If it's down, sh
 """
 from __future__ import annotations
 
+import base64
 import hmac
 import io
 import os
@@ -61,9 +62,16 @@ def frame_image(path: str):
     return str(p) if p.exists() else None
 
 
+@st.cache_data(show_spinner=False, max_entries=200)
 def gif(frames: dict) -> bytes | None:
+    # Small (480 px wide) so it's quick to build and send; cached per grab.
     paths = [frames["before"], *frames["during"], frames["after"]]
-    imgs = [Image.open(p).convert("RGB") for p in paths if Path(p).exists()]
+    imgs = []
+    for p in paths:
+        if Path(p).exists():
+            im = Image.open(p).convert("RGB")
+            im.thumbnail((480, 480))
+            imgs.append(im)
     if len(imgs) < 2:
         return None
     buf = io.BytesIO()
@@ -81,10 +89,14 @@ def show_frames(g: dict, key: str) -> None:
             col.image(img, caption=name, width="stretch")
         else:
             col.caption(f"{name}: frame not on this machine")
-    if st.toggle("▶ Play as clip", key=f"play-{key}"):
-        clip = gif(f)
-        if clip:
-            st.image(clip, width=420)
+    # Plain HTML <details>: opening it doesn't rerun the app. (A Streamlit toggle reran the page,
+    # which collapsed the expander it lives in, so the clip never showed.)
+    clip = gif(f)
+    if clip:
+        b64 = base64.b64encode(clip).decode()
+        st.markdown(f'<details><summary style="cursor:pointer">▶ Play as clip</summary>'
+                    f'<img src="data:image/gif;base64,{b64}" style="max-width:480px;width:100%;border-radius:8px;margin-top:6px"></details>',
+                    unsafe_allow_html=True)
 
 
 def grab_caption(g: dict) -> str:
