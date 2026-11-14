@@ -27,7 +27,7 @@ class Settings:
     # d1 decision thresholds (see docs/architecture.md)
     autolog_min_prob: float = float(os.getenv("AUTOLOG_MIN_PROB", "0.80"))
     guard_send_min: float = float(os.getenv("GUARD_SEND_MIN", "0.85"))
-    guard_soften_min: float = float(os.getenv("GUARD_SOFTEN_MIN", "0.50"))
+    guard_soften_min: float = float(os.getenv("GUARD_SOFTEN_MIN", "0.65"))
 
 
 settings = Settings()

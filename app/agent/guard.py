@@ -88,6 +88,36 @@ def _evidence(state: dict) -> str:
             f"\n\nLast 7 days, should-have-used vs actually-used per item:\n{variance}")
 
 
+_DATES = re.compile(
+    r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*\d{1,2}(?:st|nd|rd|th)?\b"
+    r"|\b\d{1,2}(?:st|nd|rd|th)\b|\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b|\b\d{4}-\d{2}-\d{2}\b"
+    r"|#\s*\d+|\border\s*#?\s*\d+|\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b|\b\d{1,2}\s*[-\u2013]\s*\d{1,2}\s*(?:am|pm)\b",
+    re.I)
+_IDS = re.compile(r"\b[\w-]*[a-z][\w-]*\d[\w-]*\b|\b\d[\w-]*[a-z][\w-]*\b", re.I)  # syn-00844_pepperoni etc.
+_NUM = re.compile(r"(?<![\w.])\d+(?:,\d{3})*(?:\.\d+)?(?!\w|\.\d)")
+NUM_TRUST_FLOOR = 0.25  # verified numbers + d1 not strongly against -> treat as supported
+
+
+def _numbers(text: str) -> list[float]:
+    text = _DATES.sub(" ", re.sub(r"\s+", " ", text))
+    text = _IDS.sub(" ", text)
+    return [float(n.replace(",", "")) for n in _NUM.findall(text)]
+
+
+def numbers_check(claim: str, evidence: str) -> bool | None:
+    """Deterministic: every number in the claim must appear in the evidence (to rounding).
+    None when the claim has no numbers. d1 is weak at arithmetic ($92.7 vs $9.27 scored 0.899 in
+    calibration, docs/guard-calibration.md), so numbers are never left to d1 alone."""
+    nums = _numbers(claim)
+    if not nums:
+        return None
+    pool = set(_numbers(evidence)) | {float(n) for n in _NUM.findall(_IDS.sub(" ", evidence))}
+    def ok(n: float) -> bool:
+        return any(abs(n - e) <= max(0.011, 0.005 * abs(e)) or abs(n - round(e)) < 1e-9 and n == int(n)
+                   for e in pool)
+    return all(ok(n) for n in nums)
+
+
 def score_message(text: str, state: dict, client: D1Client) -> tuple[float, list[dict]]:
     claims = split_claims(text)
     if not claims:
@@ -100,8 +130,19 @@ def score_message(text: str, state: dict, client: D1Client) -> tuple[float, list
                       "Offers, questions, and statements about what the assistant will do next are fine. "
                       f"Statement: {c}"))
         for i, c in enumerate(claims)]
-    answers = client.ask(qs, _evidence(state))
-    scored = [{"claim": c, "score": round(answers[q.id].p_yes, 4)} for c, q in zip(claims, qs)]
+    evidence = _evidence(state)
+    answers = client.ask(qs, evidence)
+    scored = []
+    for c, q in zip(claims, qs):
+        d1_score = answers[q.id].p_yes
+        nums = numbers_check(c, evidence)
+        if nums is False:
+            final = 0.0                       # a number not in the evidence: block, whatever d1 says
+        elif nums is True and d1_score >= NUM_TRUST_FLOOR:
+            final = max(d1_score, 0.9)        # every number verified in code, d1 not strongly against
+        else:
+            final = d1_score
+        scored.append({"claim": c, "score": round(final, 4), "d1": round(d1_score, 4), "numbers_ok": nums})
     return min(s["score"] for s in scored), scored
 
 

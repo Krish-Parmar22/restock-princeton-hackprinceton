@@ -192,3 +192,23 @@ def test_bad_order_qty_rejected():
     for q in (0, -5, float("nan"), 10_000):
         with pytest.raises(ValueError):
             impl.draft_order("pepperoni", q)
+
+
+def test_guard_numbers_are_checked_in_code_not_by_d1():
+    """Calibration (docs/guard-calibration.md): real d1 scored '$92.7' (true: $9.27) at 0.899."""
+    from app.agent.guard import numbers_check
+    ev = '[{"on_hand": 21.25, "variance_qty": 0.98, "variance_usd": 9.27, "example_grab_ids": ["syn-00844_pepperoni"]}]'
+    assert numbers_check("That gap is about $9.27.", ev) is True
+    assert numbers_check("That gap is $92.7.", ev) is False
+    assert numbers_check("Pepperoni ran 0.98 lb over on Nov 10.", ev) is True   # date ignored
+    assert numbers_check("Ran 844 lb over.", ev) is False                       # ids aren't evidence
+    assert numbers_check("Mostly on Tuesday.", ev) is None
+
+
+def test_guard_blocks_wrong_number_even_if_d1_says_yes(fake_ledger):
+    from langchain_core.messages import HumanMessage, ToolMessage
+    from app.agent.guard import score_message
+    state = {"messages": [HumanMessage("q"), ToolMessage('{"variance_usd": 9.27}', tool_call_id="1", name="get_variance")]}
+    yes = KeywordD1(bad=(), meh=())                         # d1 says 0.95 to everything
+    assert score_message("That gap is worth about $92.70 this week.", state, yes)[0] == 0.0
+    assert score_message("That gap is worth about $9.27 this week.", state, yes)[0] >= 0.9
