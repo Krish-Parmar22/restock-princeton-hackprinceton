@@ -346,3 +346,9 @@ def test_openrouter_body_moves_images_to_assets(pkg):
     assert set(body["assets"]) == {"img_0", "img_1"}
     a = body["assets"]["img_0"]
     assert a["format"] == "jpeg" and not a["data_base64"].startswith("data:")
+
+
+def test_zone_and_d1_item_disagree_is_flagged(pkg):
+    row, _ = check_grab(pkg, ITEMS, FakeD1(p=0.95, overrides={"item": ("cheese", 0.95)}))
+    assert pkg.meta.zone != "cheese"
+    assert row["status"] == "flagged" and row["item"] == "cheese"

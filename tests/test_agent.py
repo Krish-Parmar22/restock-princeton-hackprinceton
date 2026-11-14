@@ -135,9 +135,11 @@ def test_order_rejected_on_no(fake_ledger):
     assert out.reply == "Okay, I did not place the pepperoni order."
 
 
-def test_inbound_endpoint_echoes_without_model():
+def test_inbound_endpoint_echoes_without_model(monkeypatch):
     from fastapi.testclient import TestClient
+    from app.agent import runtime
     from app.api.server import app
+    monkeypatch.setattr(runtime, "get_agent", lambda: None)  # independent of AGENT_MODEL in .env
     r = TestClient(app).post("/inbound", json={"chat_id": "c", "sender": "s", "text": "hi", "ts": "2026-11-14T12:00:00Z"})
     assert r.status_code == 200 and "echo: hi" in r.json()["reply"]
 

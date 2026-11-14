@@ -111,7 +111,7 @@ def build_questions(pkg: GrabPackage, items: list[str]) -> tuple[dict, dict]:
     return bin_req, grab_req
 
 
-def decide(answers: dict[str, D1Answer], min_prob: float) -> dict:
+def decide(answers: dict[str, D1Answer], min_prob: float, zone: str | None = None) -> dict:
     """Apply the decision rules to d1's answers. Returns action, item, qty_label, confidence,
     status and the reasons a grab was flagged (empty when logged)."""
     bin_ans = answers["bin_change"]
@@ -126,6 +126,8 @@ def decide(answers: dict[str, D1Answer], min_prob: float) -> dict:
     if item == NONE_ITEM:
         item = None
         reasons.append("item=none")
+    elif zone and item != zone:  # the box says one ingredient, d1 saw another: owner decides
+        reasons.append(f"zone is '{zone}' but d1 saw '{item}'")
 
     qty_label = None
     if action in ("took", "put_back"):
@@ -151,7 +153,7 @@ def check_grab(pkg: GrabPackage, items: list[str], client: D1Client) -> tuple[di
     for req in build_questions(pkg, items):
         answers.update(client.ask(req["questions"], req["state"], req["images"]))
 
-    d = decide(answers, settings.autolog_min_prob)
+    d = decide(answers, settings.autolog_min_prob, zone=pkg.meta.zone)
     m = pkg.meta
     row = {
         "grab_id": m.grab_id, "zone": m.zone, "camera_id": m.camera_id, "source": m.source,

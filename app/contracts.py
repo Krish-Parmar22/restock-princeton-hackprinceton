@@ -29,6 +29,8 @@ class GrabMeta(BaseModel):
     t_end: datetime
     frame_times: list[datetime] = Field(default_factory=list)
     source: Literal["webcam", "iphone", "fake"] = "webcam"
+    # The bin's box on the camera frame: [[x, y], ...] in pixels. Optional; used to crop/highlight.
+    zone_polygon: list[list[float]] | None = None
 
 
 class GrabPackage(BaseModel):
