@@ -14,7 +14,8 @@ class GrabCutter:
         os.makedirs(output_dir, exist_ok=True)
 
     def cut(self, zone_name: str, t_start: float, t_end: float,
-            frame_buffer, during_fps: float = 2.0) -> str | None:
+            frame_buffer, during_fps: float = 2.0,
+            zone_polygon: list | None = None, camera_id: str = "mac_cam") -> str | None:
         """Produce a grab package from the frame buffer.
 
         Returns the grab folder path, or None if not enough frames.
@@ -45,10 +46,19 @@ class GrabCutter:
                 during_frames.append((t, f))
                 next_t = t + interval
 
-        # build folder
+        # d1 takes at most 8 images (before + 6 during + after): keep 6 evenly spaced
+        if len(during_frames) > 6:
+            step = (len(during_frames) - 1) / 5
+            during_frames = [during_frames[round(i * step)] for i in range(6)]
+
+        # unique id, written to a hidden temp folder and renamed when complete, so the
+        # uploader (and anything else watching grabs/) never sees half a package
         ts_str = datetime.fromtimestamp(t_start).strftime("%Y-%m-%dT%H-%M-%S")
-        grab_id = f"{ts_str}_{zone_name}"
-        folder = os.path.join(self.output_dir, grab_id)
+        grab_id, n = f"{ts_str}_{zone_name}", 2
+        while os.path.exists(os.path.join(self.output_dir, grab_id)):
+            grab_id, n = f"{ts_str}_{zone_name}-{n}", n + 1
+        final = os.path.join(self.output_dir, grab_id)
+        folder = os.path.join(self.output_dir, f".tmp-{grab_id}")
         os.makedirs(folder, exist_ok=True)
 
         cv2.imwrite(os.path.join(folder, "before.jpg"), before_frame)
@@ -62,15 +72,19 @@ class GrabCutter:
 
         meta = {
             "grab_id": grab_id,
-            "camera_id": "mac_cam",
+            "camera_id": camera_id,
             "zone": zone_name,
             "t_start": t_start,
             "t_end": t_end,
             "frame_times": frame_times,
             "source": self.source,
         }
+        if zone_polygon:
+            meta["zone_polygon"] = [[int(x), int(y)] for x, y in zone_polygon]  # full-frame pixels
         with open(os.path.join(folder, "meta.json"), "w") as f:
             json.dump(meta, f, indent=2)
+        os.rename(folder, final)
+        folder = final
 
         print(f"[grab] {grab_id}: before + {len(during_frames)} during + after")
         return folder

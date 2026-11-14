@@ -71,12 +71,18 @@ def main():
     parser.add_argument("--no-record", action="store_true", help="Skip continuous recording")
     parser.add_argument("--show", action="store_true", help="Show live preview window")
     parser.add_argument("--fps", type=float, default=15.0, help="Target capture FPS")
-    parser.add_argument("--api-url", default="", help="Backend API URL for uploads (empty=disabled)")
+    parser.add_argument("--api-url", default=os.getenv("UPLOAD_URL", ""), help="Laptop API base URL, e.g. http://192.168.1.20:8000 (empty=no uploads)")
+    parser.add_argument("--upload-token", default=os.getenv("UPLOAD_TOKEN", ""), help="Shared secret sent as X-Upload-Token")
+    parser.add_argument("--camera-id", default="pi-makeline-1", help="Fixed name for this camera in meta.json")
     args = parser.parse_args()
 
+    worker = None
     if args.api_url:
         uploader.BASE_URL = args.api_url
-        print(f"[main] uploads enabled → {args.api_url}")
+        uploader.UPLOAD_TOKEN = args.upload_token
+        worker = uploader.UploadWorker(GRABS_DIR)  # also resends anything unsent from before a restart
+        worker.start()
+        print(f"[main] uploads enabled → {args.api_url}/api/grabs/upload")
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -98,6 +104,7 @@ def main():
 
     # load zones
     zones = load_zones()
+    zone_points = {z["name"]: z["points"] for z in zones}
 
     # init modules
     buffer = FrameBuffer(duration=3.0)  # 3s to have margin for the "before" frame
@@ -144,11 +151,13 @@ def main():
                     t_start=ev["t_start"],
                     t_end=ev["t_end"],
                     frame_buffer=buffer,
+                    zone_polygon=zone_points.get(ev["zone"]),
+                    camera_id=args.camera_id,
                 )
                 if folder:
                     grab_count += 1
-                    if args.api_url:
-                        uploader.upload_grab(folder)
+                    if worker:
+                        worker.nudge()
 
         # live preview
         if args.show:

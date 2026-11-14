@@ -1,118 +1,142 @@
-"""Upload grab packages to the backend API.
+"""Upload grab packages to the laptop: one multipart POST per package (docs/handoff.md).
 
-Each grab folder (before.jpg, during_*.jpg, after.jpg, meta.json) is
-POSTed as a multipart form to POST {BASE_URL}/upload.
+    POST {BASE_URL}/api/grabs/upload
+      meta     = meta.json text (zone NAME, epoch-second timestamps, zone_polygon)
+      files    = before.jpg, during_01..06.jpg, after.jpg  (original JPEGs, not resized)
+      header   X-Upload-Token: <UPLOAD_TOKEN>   (when set)
 
-Uploads run in a background thread so they never block the camera loop.
-Set BASE_URL before calling upload_grab(), or pass --api-url to main.py.
+Why one package per request (vs one POST per image): the laptop gets the whole grab or
+nothing, can dedupe retries (409), and never has to guess when a grab is complete.
+
+Delivery is guaranteed by a background worker: every package folder without a `.sent`
+marker is retried with backoff until the laptop answers 200/409. 400 = the package itself
+is bad, so it's marked `.rejected` and never retried. Nothing is deleted.
 """
+
+from __future__ import annotations
 
 import glob
 import json
 import logging
 import os
 import threading
-from datetime import datetime
+import time
 
-import cv2
 import requests
 
 log = logging.getLogger(__name__)
 
-BASE_URL = ""  # set by main.py via --api-url
+BASE_URL = ""       # set by main.py via --api-url
+UPLOAD_TOKEN = ""   # set by main.py via --upload-token (or UPLOAD_TOKEN env var)
+SENT, REJECTED = ".sent", ".rejected"
+MAX_BACKOFF = 60.0
 
-# map zone names → numeric IDs for the backend
-ZONE_MAP: dict[str, int] = {}
-_next_zone_id = [1]
+
+def _files(grab_dir: str) -> list[str]:
+    files = [os.path.join(grab_dir, "before.jpg")]
+    files += sorted(glob.glob(os.path.join(grab_dir, "during_*.jpg")))[:6]
+    files.append(os.path.join(grab_dir, "after.jpg"))
+    return [f for f in files if os.path.exists(f)]
 
 
-def _zone_id(name: str) -> int:
-    """Auto-assign a stable numeric ID per zone name."""
-    if name not in ZONE_MAP:
-        ZONE_MAP[name] = _next_zone_id[0]
-        _next_zone_id[0] += 1
-    return ZONE_MAP[name]
+def send_package(grab_dir: str) -> str:
+    """POST one package. Returns 'sent' | 'duplicate' | 'rejected' | 'retry'."""
+    if not BASE_URL:
+        return "retry"
+    try:
+        with open(os.path.join(grab_dir, "meta.json")) as f:
+            meta_text = f.read()
+        json.loads(meta_text)
+    except Exception as e:
+        log.error("[upload] unreadable meta in %s: %s", grab_dir, e)
+        return "rejected"
+    handles = [(os.path.basename(p), open(p, "rb")) for p in _files(grab_dir)]
+    try:
+        resp = requests.post(
+            f"{BASE_URL.rstrip('/')}/api/grabs/upload",
+            data={"meta": meta_text},
+            files=[(name, (name, fh, "image/jpeg")) for name, fh in handles],
+            headers={"X-Upload-Token": UPLOAD_TOKEN} if UPLOAD_TOKEN else {},
+            timeout=30,
+        )
+    except requests.RequestException as e:
+        log.warning("[upload] %s: laptop unreachable (%s), will retry", os.path.basename(grab_dir), e)
+        return "retry"
+    finally:
+        for _, fh in handles:
+            fh.close()
+    if resp.status_code == 200:
+        return "sent"
+    if resp.status_code == 409:
+        return "duplicate"   # an earlier attempt landed: success
+    if resp.status_code == 400:
+        log.error("[upload] %s rejected: %s", os.path.basename(grab_dir), resp.text[:300])
+        return "rejected"
+    log.warning("[upload] %s: HTTP %s, will retry", os.path.basename(grab_dir), resp.status_code)
+    return "retry"
+
+
+def _mark(grab_dir: str, marker: str, note: str = "") -> None:
+    with open(os.path.join(grab_dir, marker), "w") as f:
+        f.write(note or time.strftime("%Y-%m-%dT%H:%M:%S"))
+
+
+def deliver(grab_dir: str) -> str:
+    """Send once and record the outcome with a marker file."""
+    status = send_package(grab_dir)
+    if status in ("sent", "duplicate"):
+        _mark(grab_dir, SENT, status)
+        print(f"[upload] {os.path.basename(grab_dir)}: {status}")
+    elif status == "rejected":
+        _mark(grab_dir, REJECTED)
+    return status
+
+
+def pending(grabs_dir: str) -> list[str]:
+    """Complete package folders that haven't been sent or rejected, oldest first."""
+    out = []
+    for d in sorted(glob.glob(os.path.join(grabs_dir, "*"))):
+        name = os.path.basename(d)
+        if not os.path.isdir(d) or name.startswith("."):
+            continue
+        if os.path.exists(os.path.join(d, SENT)) or os.path.exists(os.path.join(d, REJECTED)):
+            continue
+        if not os.path.exists(os.path.join(d, "meta.json")):
+            continue
+        out.append(d)
+    return out
+
+
+class UploadWorker(threading.Thread):
+    """Background thread: keeps delivering every unsent package, with backoff when offline."""
+
+    def __init__(self, grabs_dir: str, poll: float = 1.0):
+        super().__init__(daemon=True, name="uploader")
+        self.grabs_dir, self.poll = grabs_dir, poll
+        self.wake = threading.Event()
+        self.stop_flag = False
+        self.backoff = 0.0
+
+    def nudge(self) -> None:
+        """Call after writing a new package to send it right away."""
+        self.wake.set()
+
+    def run(self) -> None:
+        while not self.stop_flag:
+            for d in pending(self.grabs_dir):
+                if deliver(d) == "retry":
+                    self.backoff = min(MAX_BACKOFF, (self.backoff * 2) or 2.0)
+                    break   # laptop unreachable: wait before trying the rest
+                self.backoff = 0.0
+            self.wake.wait(self.backoff or self.poll)
+            self.wake.clear()
 
 
 def upload_grab(grab_dir: str, *, background: bool = True) -> None:
-    """Upload a grab package folder.
-
-    Args:
-        grab_dir: path to the grab folder
-        background: if True (default), upload in a daemon thread.
-                    Set False for testing to run synchronously.
-    """
+    """Back-compat entry point: deliver one package now (or in a thread)."""
     if not BASE_URL:
         return
     if background:
-        t = threading.Thread(target=_do_upload, args=(grab_dir,), daemon=True)
-        t.start()
+        threading.Thread(target=deliver, args=(grab_dir,), daemon=True).start()
     else:
-        _do_upload(grab_dir)
-
-
-def _do_upload(grab_dir: str) -> None:
-    """POST each image in the grab package to {BASE_URL}/upload.
-
-    Reads meta.json for zone/timestamps, resizes each image to 640x480 PNG,
-    and sends as multipart POST. Errors are logged, never raised.
-    """
-    meta_path = os.path.join(grab_dir, "meta.json")
-    try:
-        with open(meta_path) as f:
-            meta = json.load(f)
-    except Exception as e:
-        log.error("[upload] failed to read %s: %s", meta_path, e)
-        return
-
-    zone_name = meta.get("zone", "")
-    zone_num = _zone_id(zone_name)
-    t_start = meta.get("t_start", 0)
-    timestamp = datetime.fromtimestamp(t_start).isoformat()
-    grab_id = meta.get("grab_id", os.path.basename(grab_dir))
-
-    # collect image files in order: before, during_*, after
-    images = []
-    before = os.path.join(grab_dir, "before.jpg")
-    if os.path.exists(before):
-        images.append(before)
-    images.extend(sorted(glob.glob(os.path.join(grab_dir, "during_*.jpg"))))
-    after = os.path.join(grab_dir, "after.jpg")
-    if os.path.exists(after):
-        images.append(after)
-
-    url = f"{BASE_URL.rstrip('/')}/upload"
-    uploaded = 0
-
-    for img_path in images:
-        try:
-            frame = cv2.imread(img_path)
-            if frame is None:
-                log.warning("[upload] could not read %s", img_path)
-                continue
-            resized = cv2.resize(frame, (640, 480))
-            _, png_bytes = cv2.imencode(".png", resized)
-
-            resp = requests.post(
-                url,
-                files={"image": (os.path.basename(img_path), png_bytes.tobytes(), "image/png")},
-                data={
-                    "zone": zone_num,
-                    "zone_name": zone_name,
-                    "time": timestamp,
-                    "grab_id": grab_id,
-                },
-                timeout=10,
-            )
-            if resp.ok:
-                uploaded += 1
-            else:
-                log.warning("[upload] %s → %s %s", os.path.basename(img_path), resp.status_code, resp.reason)
-        except requests.ConnectionError:
-            log.error("[upload] connection refused for %s — is the backend running at %s?", grab_id, BASE_URL)
-            return  # don't retry the rest if server is down
-        except Exception as e:
-            log.error("[upload] failed %s: %s", os.path.basename(img_path), e)
-
-    if uploaded:
-        print(f"[upload] {grab_id}: {uploaded}/{len(images)} frames sent")
+        deliver(grab_dir)
