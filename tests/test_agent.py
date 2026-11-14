@@ -116,7 +116,7 @@ def test_order_waits_for_owner_then_resumes_on_yes(fake_ledger):
         ai("done"),
     ])
     first = run_inbound(agent, msg("should I reorder?"))
-    assert "below the par of 10" in first.reply and "Approve this order: 20 lb of pepperoni" in first.reply
+    assert "below the par of 10" in first.reply and "- Pepperoni: 20 lb ($90.00" in first.reply
     assert fake_ledger["orders"] == []                     # nothing placed before the owner says yes
     second = run_inbound(agent, msg("yes"))
     assert fake_ledger["orders"] == [("draft", "pepperoni", 20), ("approved", 7)]

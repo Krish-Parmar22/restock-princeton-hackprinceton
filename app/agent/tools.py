@@ -109,6 +109,25 @@ def place_order(item: str, qty: float, supplier: str | None = None) -> str:
 
 
 @tool
+def place_orders(orders: list[dict], supplier: str | None = None) -> str:
+    """Place several reorders at once (e.g. the whole reorder_plan), as ONE approval for the owner.
+    orders: [{"item": "coke", "qty": 9}, ...]. Pauses for the owner's yes before anything is ordered."""
+    ctx = context.current()
+    done, errors = [], []
+    for o in orders:
+        item, qty = _item_name(str(o.get("item", ""))), o.get("qty")
+        try:
+            oid = ledger.draft_order(item, float(qty), ctx.chat_id if ctx else None, supplier)
+            ledger.set_order_status(oid, "approved")
+            done.append({"order_id": oid, "item": item, "qty": float(qty)})
+        except (KeyError, ValueError, TypeError) as e:
+            errors.append({"item": item, "error": str(e)})
+    if done:
+        _changed("ordered " + ", ".join(f"{d['qty']:g} {d['item']}" for d in done))
+    return _j({"placed": done, "errors": errors})
+
+
+@tool
 def correct_grab(grab_id: str, action: str, item: str, qty_label: str) -> str:
     """Owner correction of one camera grab, e.g. "that was a put-back" or "that was cheese, not
     dough". action: took | put_back | touched. qty_label: pinch | handful | whole_container.
@@ -183,13 +202,15 @@ def get_bank_statement(days: int = 7) -> str:
     if not secure.configured():
         return _j({"locked": True, "say": "Bank info is turned off until the owner sets up an authenticator app."})
     if not secure.is_unlocked(chat):
+        say = secure.CODE_PROMPT
         if chat:
             secure.request_code(chat, (ctx.text if ctx and ctx.text else f"bank statement for {days} days"))
-        return _j({"locked": True,
-                   "say": "That's sensitive. Reply with the 6-digit code from your authenticator app."})
+        if ctx is not None:
+            ctx.locked_say = say   # the runtime sends exactly this (no model wording, no guard rewrite)
+        return _j({"locked": True, "say": say})
     from app import bank
     return _j(bank.statement(days))
 
 
-ALL_TOOLS = [get_stock, get_variance, list_grabs, d1_look, send_text, place_order, correct_grab, set_par,
+ALL_TOOLS = [get_stock, get_variance, list_grabs, d1_look, send_text, place_order, place_orders, correct_grab, set_par,
              record_count, reorder_plan, show_sheet, get_bank_statement]

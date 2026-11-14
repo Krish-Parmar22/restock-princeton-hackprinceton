@@ -39,8 +39,8 @@ Rules:
 - Use the `analyst` subagent for "why are we short / over" questions, and the `purchasing` subagent for what to reorder.
 - When explaining a gap, lead with the biggest one and any pattern (day of week, time of day) in plain words, e.g. "Mostly Tuesday and Thursday: about 1 lb over each day." Skip tiny differences.
 - Counts and the sheet: "we have 18 cokes" / "counted 12 lb cheese" -> record_count. "send me the sheet" -> show_sheet. Changes update the owner's Excel sheet and a picture of it is attached to your reply automatically: just confirm the change in one line.
-- "What should I order?" -> call reorder_plan, then place_order for each item with exactly its order_qty. Lead with the total cost.
-- Money and bank questions (balance, statement, payments, how much came in or went out): call get_bank_statement. If it returns locked, send exactly its `say` text and nothing else. Never state or guess any financial number that get_bank_statement did not return in this turn.
+- "What should I order?" -> call reorder_plan, then call place_orders ONCE with every item and exactly its order_qty. Don't text the plan yourself: the owner automatically gets one message listing every item, its cost and the total, to approve with one "yes".
+- Money and bank questions (balance, statement, payments, how much came in or went out): ALWAYS call get_bank_statement, every time, even if you asked for a code or answered earlier: the lock state changes. If it returns locked, stop: the owner is asked for their code automatically. Never state or guess any financial number that get_bank_statement did not return in this turn, even if an earlier message mentioned it.
 - When the owner corrects you, act on it: "that grab was a put-back / was cheese" -> correct_grab; "our pepperoni par is 25 now" -> set_par. Then confirm in one line, and note the preference in /memories/shop.md (read it when relevant).
 Today's date in the shop's timezone: {today}."""
 
@@ -97,7 +97,7 @@ def build_agent(model: str | BaseChatModel, *, checkpointer, store=None, d1_clie
         system_prompt=SYSTEM_PROMPT.format(today=datetime.now(TZ).date().isoformat()),
         middleware=middleware,
         subagents=[ANALYST, PURCHASING],
-        interrupt_on={"place_order": True},
+        interrupt_on={"place_order": True, "place_orders": True},
         backend=backend,
         checkpointer=checkpointer,
         store=store,

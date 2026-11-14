@@ -119,6 +119,7 @@ def test_gate_handles_codes_without_the_model(db, monkeypatch):
     assert "didn't match" in bad.reply and seen == [], "a code is never given to the agent"
     ok = runtime._security_gate(object(), msg(pyotp.TOTP(SECRET).now()))
     assert ok.reply.startswith("Verified.") and "Balance: $1.00" in ok.reply
-    assert seen == ["what's our balance?"], "the original question is re-run, not the code"
+    assert len(seen) == 1 and seen[0].startswith("what's our balance?"), "the original question is re-run"
+    assert pyotp.TOTP(SECRET).now() not in seen[0], "never the code itself"
     assert runtime._security_gate(object(), msg("lock")).reply.startswith("Locked")
     assert not secure.is_unlocked("chat-9")

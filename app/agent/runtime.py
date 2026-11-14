@@ -78,22 +78,36 @@ def pending_approval(agent, config) -> list[dict]:
 
 
 def _approval_prompt(reqs: list[dict]) -> str:
+    """Fixed template (not model text): every line, its cost from the ledger, and the total."""
     from app.ledger import api as ledger
     try:
-        units = {r.item: r.unit for r in ledger.get_inventory()}
+        inv = {r.item: r for r in ledger.get_inventory()}
     except Exception:
-        units = {}
-    lines = []
+        inv = {}
+    lines, total = [], 0.0
     for r in reqs:
-        a = r.get("args", {})
-        if a:
-            qty = a.get("qty")
-            qty = int(qty) if isinstance(qty, float) and qty.is_integer() else qty
-            unit = units.get(str(a.get("item", "")).lower(), "")
-            lines.append(f"{qty} {unit} of {a.get('item')}".replace("  ", " "))
-        else:
-            lines.append(r.get("name", "this"))
-    return "Approve this order: " + ", ".join(lines) + "? Reply yes or no."
+        a = r.get("args", {}) or {}
+        orders = a.get("orders") if isinstance(a.get("orders"), list) else ([a] if a.get("item") else [])
+        for o in orders:
+            name = str(o.get("item", "")).lower().strip().replace(" ", "_")
+            try:
+                qty = float(o.get("qty"))
+            except (TypeError, ValueError):
+                continue
+            row = inv.get(name)
+            q = f"{qty:g}"
+            if row is not None:
+                cost = qty * row.unit_cost
+                total += cost
+                have = f"{row.on_hand:g}/{row.par:g}"
+                lines.append(f"- {name.replace('_', ' ').title()}: {q} {row.unit} (${cost:,.2f}, on hand {have} par)")
+            else:
+                lines.append(f"- {name.replace('_', ' ')}: {q}")
+        if not orders:
+            lines.append(f"- {r.get('name', 'this')}")
+    head = "Reorder plan:" if len(lines) > 1 else "Order:"
+    tail = f"Total ${total:,.2f}. Approve? Reply yes or no." if total else "Approve? Reply yes or no."
+    return "\n".join([head, *lines, tail])
 
 
 def run_inbound(agent, msg: InboundMessage, d1_client=None) -> InboundReply:
@@ -108,11 +122,13 @@ def run_inbound(agent, msg: InboundMessage, d1_client=None) -> InboundReply:
             agent.invoke(Command(resume={"decisions": [decision] * len(waiting)}), config, version="v2")
         else:
             agent.invoke({"messages": [{"role": "user", "content": msg.text}]}, config, version="v2")
-        texts = [m["text"] for m in ctx.outbox]
+        texts = [m["text"] for m in ctx.outbox if not NON_ANSWERS.match(m["text"] or "")]
         images = [i for m in ctx.outbox for i in m["images"]]
-        if not texts:  # model answered in plain text instead of send_text: guard it too
+        if ctx.locked_say:   # sensitive + locked: exactly the code prompt, whatever the model wrote
+            texts = [ctx.locked_say]
+        elif not texts:  # model answered in plain text instead of send_text: guard it too
             final = _final_ai_text(agent, config)
-            if final:
+            if final and not NON_ANSWERS.match(final):
                 from app.d1.base import get_client
                 texts.append(guard_final_text(final, agent.get_state(config).values, d1_client or get_client(),
                                               msg.chat_id))
@@ -160,6 +176,18 @@ def handle_inbound(msg: InboundMessage) -> InboundReply:
     return run_inbound(agent, msg)
 
 
+def _note(agent, chat_id: str, text: str) -> None:
+    """Append a system note to the chat's thread (no model call)."""
+    try:
+        from langchain_core.messages import HumanMessage
+        agent.update_state({"configurable": {"thread_id": chat_id}}, {"messages": [HumanMessage(content=text)]})
+    except Exception:
+        pass
+
+
+NON_ANSWERS = re.compile(r"^\W*\(?\s*(no reply|no response|none|n/?a)\s*\)?\W*$", re.I)
+
+
 def _security_gate(agent, msg: InboundMessage) -> InboundReply | None:
     """Authenticator codes and "lock" are handled here, in code: a code never reaches the model."""
     from app import secure
@@ -167,6 +195,9 @@ def _security_gate(agent, msg: InboundMessage) -> InboundReply | None:
         return None
     if secure.looks_like_lock(msg.text):
         secure.lock(msg.chat_id)
+        _note(agent, msg.chat_id, "[system: the owner locked bank info. Any balance or statement numbers earlier "
+                                  "in this chat are stale and must not be repeated; call get_bank_statement for any "
+                                  "money question.]")
         return InboundReply(reply="Locked. Bank info needs a new code next time.")
     if not secure.looks_like_code(msg.text):
         return None
@@ -181,7 +212,9 @@ def _security_gate(agent, msg: InboundMessage) -> InboundReply | None:
     head = f"Verified. Unlocked for {res.minutes} minutes (text \"lock\" to lock it now)."
     if not res.question:
         return InboundReply(reply=head)
-    out = run_inbound(agent, InboundMessage(chat_id=msg.chat_id, sender=msg.sender, text=res.question, ts=msg.ts))
+    rerun = (f"{res.question}\n\n[system: the owner just verified with their authenticator code. Bank info is "
+             f"UNLOCKED now: call get_bank_statement again and answer from its result.]")
+    out = run_inbound(agent, InboundMessage(chat_id=msg.chat_id, sender=msg.sender, text=rerun, ts=msg.ts))
     return InboundReply(reply=head + ("\n\n" + out.reply if out.reply else ""), images=out.images)
 
 

@@ -18,6 +18,7 @@ class RunContext:
     outbox: list[dict] = field(default_factory=list)  # [{"text":..., "images": [...]}]
     text: str = ""                    # the owner's message this run is answering
     sheet_changes: list[str] = field(default_factory=list)  # what the owner changed (-> sheet refresh + picture)
+    locked_say: str | None = None     # a sensitive tool was locked: reply exactly this, nothing else
 
 
 _CTX: ContextVar[RunContext | None] = ContextVar("run_ctx", default=None)

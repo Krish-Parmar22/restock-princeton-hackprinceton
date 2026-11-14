@@ -22,6 +22,7 @@ import pyotp
 
 from app.config import settings
 
+CODE_PROMPT = "That's sensitive. Reply with the 6-digit code from your authenticator app."
 UNLOCK_MIN = 10
 MAX_FAILS = 3
 LOCKOUT_MIN = 15
