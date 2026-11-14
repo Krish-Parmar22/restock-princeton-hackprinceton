@@ -88,8 +88,10 @@ def _evidence(state: dict) -> str:
             f"\n\nLast 7 days, should-have-used vs actually-used per item:\n{variance}")
 
 
+_DASH = "-\u2010\u2011\u2012\u2013\u2014\u2015\u2212"
 _DATES = re.compile(
-    r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*\d{1,2}(?:st|nd|rd|th)?\b"
+    r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*\d{1,2}(?:st|nd|rd|th)?"
+    r"(?:\s*(?:[" + _DASH + r"]|to|through|thru)\s*\d{1,2}(?:st|nd|rd|th)?)?\b"
     r"|\b\d{1,2}(?:st|nd|rd|th)\b|\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b|\b\d{4}-\d{2}-\d{2}\b"
     r"|#\s*\d+|\border\s*#?\s*\d+|\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b|\b\d{1,2}\s*[-\u2013]\s*\d{1,2}\s*(?:am|pm)\b",
     re.I)
