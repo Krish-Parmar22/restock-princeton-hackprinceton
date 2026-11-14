@@ -21,6 +21,15 @@ ITEMS = [  # name, unit, unit_cost, par, qty_per_label
     ("dough", "each", 0.60, 30, {"pinch": 1, "handful": 1, "whole_container": 20}),
     ("sauce", "qt", 2.20, 4, {"pinch": 0.02, "handful": 0.1, "whole_container": 2}),
 ]
+DRINK_QPL = {"1": 1, "2": 2, "3": 3, "pinch": 1, "handful": 2, "whole_container": 6}
+DRINKS = [  # the drinks fridge (SCENE=drinks live demo); seeded in every scene, counted 24 each, no sales/grabs
+    ("coke", "each", 1.00, 6, DRINK_QPL),
+    ("diet_coke", "each", 1.00, 6, DRINK_QPL),
+    ("sprite", "each", 1.00, 6, DRINK_QPL),
+    ("water", "each", 0.50, 6, DRINK_QPL),
+    ("limonada_fresca", "each", 1.50, 6, DRINK_QPL),
+]
+DRINK_START_COUNT = 24
 RECIPES = {  # menu item -> {ingredient: qty per unit sold}
     "large cheese": {"dough": 1, "sauce": 0.25, "cheese": 0.5},
     "large pepperoni": {"dough": 1, "sauce": 0.25, "cheese": 0.45, "pepperoni": 0.25},
@@ -60,6 +69,13 @@ def seed(url: str | None = None, reset: bool = False, rng_seed: int = 7) -> dict
                 """INSERT INTO items (name, unit, unit_cost, par, qty_per_label) VALUES (%s, %s, %s, %s, %s)
                    ON CONFLICT (name) DO UPDATE SET unit = EXCLUDED.unit RETURNING id""",
                 (name, unit, cost, par, Jsonb(qpl))).fetchone()["id"]
+        drink_ids = {}
+        for name, unit, cost, par, dq in DRINKS:  # kept out of `ids` so the pizza week's RNG stream is unchanged
+            drink_ids[name] = conn.execute(
+                """INSERT INTO items (name, unit, unit_cost, par, qty_per_label) VALUES (%s, %s, %s, %s, %s)
+                   ON CONFLICT (name) DO UPDATE SET unit = EXCLUDED.unit, unit_cost = EXCLUDED.unit_cost,
+                       par = EXCLUDED.par, qty_per_label = EXCLUDED.qty_per_label RETURNING id""",
+                (name, unit, cost, par, Jsonb(dq))).fetchone()["id"]
         qpl = {name: q for name, _, _, _, q in ITEMS}
         for menu, parts in RECIPES.items():
             for ing, q in parts.items():
@@ -69,6 +85,9 @@ def seed(url: str | None = None, reset: bool = False, rng_seed: int = 7) -> dict
         for name, q in START_COUNT.items():
             conn.execute("INSERT INTO counts (ts, item_id, qty, source) VALUES (%s, %s, %s, 'manual')",
                          (first, ids[name], q))
+        for name, did in drink_ids.items():
+            conn.execute("INSERT INTO counts (ts, item_id, qty, source) VALUES (%s, %s, %s, 'manual')",
+                         (first, did, DRINK_START_COUNT))
         for off, delivery in DELIVERIES.items():
             d = WEEK_START + timedelta(days=off)
             for name, q in delivery.items():

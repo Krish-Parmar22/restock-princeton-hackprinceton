@@ -145,6 +145,18 @@ def test_seeded_week_shows_planted_pepperoni(db):
     assert week[0].item == "pepperoni"                            # biggest $ gap
 
 
+def test_seed_adds_drinks_fridge(db):
+    from app.ledger.seed import seed
+    seed(URL, reset=True)
+    inv = {r.item: r for r in api.get_inventory()}
+    for name in ("coke", "diet_coke", "sprite", "water", "limonada_fresca"):
+        assert inv[name].on_hand == 24 and inv[name].unit == "each" and inv[name].par == 6
+    assert {"pepperoni", "cheese", "dough", "sauce"} <= set(inv)
+    with connect(URL) as conn:
+        r = conn.execute("SELECT unit_cost, qty_per_label FROM items WHERE name = 'water'").fetchone()
+    assert float(r["unit_cost"]) == 0.5 and r["qty_per_label"]["2"] == 2 and r["qty_per_label"]["whole_container"] == 6
+
+
 def test_api_shapes(db):
     from fastapi.testclient import TestClient
     from app.api.server import app
