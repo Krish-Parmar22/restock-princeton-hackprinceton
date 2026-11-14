@@ -63,9 +63,24 @@ SCENES = {
 }
 
 
+def scene_for(zone: str) -> str:
+    """'drinks' (exact counts) for items counted in units, 'pizza' (pinch/handful) for bulk food.
+    SCENE=drinks|pizza forces one wording for every box; SCENE=auto (default) decides per box, so a
+    cheese bowl and a Sprite shelf can be watched at the same time."""
+    if settings.scene in SCENES:
+        return settings.scene
+    try:
+        from app.ledger.impl import _conn
+        with _conn() as c:
+            r = c.execute("SELECT qty_per_label FROM items WHERE name = %s", (zone,)).fetchone()
+        return "drinks" if r and "1" in (r["qty_per_label"] or {}) else "pizza"
+    except Exception:
+        return "pizza"
+
+
 def build_questions(pkg: GrabPackage, items: list[str]) -> tuple[dict, dict]:
     """Return the two requests as dicts {questions, state, images}."""
-    w = SCENES.get(settings.scene, SCENES["pizza"])
+    w = SCENES[scene_for(pkg.meta.zone)]
     zone = pkg.meta.zone
     during = _sample(pkg.during, MAX_DURING)
     n_during = len(during)

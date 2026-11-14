@@ -28,8 +28,9 @@ class Settings:
     autolog_min_prob: float = float(os.getenv("AUTOLOG_MIN_PROB", "0.80"))
     guard_send_min: float = float(os.getenv("GUARD_SEND_MIN", "0.85"))
     guard_soften_min: float = float(os.getenv("GUARD_SOFTEN_MIN", "0.65"))
-    # What the camera watches: "pizza" (ingredient bins on a make-line) or "drinks" (a drinks fridge/shelf).
-    scene: str = os.getenv("SCENE", "pizza")
+    # How d1 is asked: "auto" (per box: counted items like cans get exact counts, bulk food gets
+    # pinch/handful), or force "pizza" / "drinks" for every box.
+    scene: str = os.getenv("SCENE", "auto")
     # Base32 secret shared with the owner's authenticator app (scripts/setup_authenticator.py).
     owner_totp_secret: str = os.getenv("OWNER_TOTP_SECRET", "")
     # Where the live Excel sheet is written after every change (the owner opens this file).

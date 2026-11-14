@@ -232,3 +232,15 @@ def test_default_general_purpose_subagent_is_replaced_read_only():
     names = {t.name for t in build.GENERAL["tools"]}
     assert build.GENERAL["name"] == "general-purpose"
     assert not names & {"send_text", "get_bank_statement", "place_order", "place_orders"}
+
+
+def test_wording_is_chosen_per_box(db, monkeypatch):
+    """Cheese bowl and Sprite shelf in one demo: counted items get exact counts, bulk food pinch/handful."""
+    from app.grabs import checks
+    monkeypatch.setattr(checks, "settings", SimpleNamespace(scene="auto"))
+    with connect(URL) as conn:
+        conn.execute("INSERT INTO items (name, unit, unit_cost, par, qty_per_label) VALUES ('cheese','lb',3.8,15,%s)",
+                     (Jsonb({"pinch": 0.05, "handful": 0.3, "whole_container": 5}),))
+    assert checks.scene_for("coke") == "drinks" and checks.scene_for("cheese") == "pizza"
+    monkeypatch.setattr(checks, "settings", SimpleNamespace(scene="drinks"))
+    assert checks.scene_for("cheese") == "drinks", "SCENE forces one wording"

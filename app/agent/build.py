@@ -20,7 +20,8 @@ from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 
 from app.agent.guard import D1GuardMiddleware
-from app.agent.tools import ALL_TOOLS, d1_look, get_stock, get_variance, list_grabs, reorder_plan
+from app.agent.tools import (ALL_TOOLS, d1_look, demand_forecast, flagged_grabs, get_stock, get_variance, list_grabs,
+                             reorder_plan, usage_trend)
 from app.config import settings
 from app.d1.base import D1Client
 from app.ledger.impl import TZ
@@ -43,23 +44,42 @@ Rules:
 - Orders: an approved order is an approved reorder draft that is ON ORDER. Nothing is sent to a supplier and stock does not go up until the owner says the delivery came -> receive_delivery. Say "on order", never "delivered" or "sent to the supplier".
 - If get_stock shows unreviewed > 0 for an item, say its count may change once the owner reviews those flagged camera grabs.
 - Money and bank questions (balance, statement, payments, how much came in or went out): ALWAYS call get_bank_statement, every time, even if you asked for a code or answered earlier: the lock state changes. If it returns locked, stop: the owner is asked for their code automatically. Never state or guess any financial number that get_bank_statement did not return in this turn, even if an earlier message mentioned it.
+- Morning briefing: each one is saved in /reports/briefing-<date>.md. If the owner replies "confirm grabs", read today's briefing and call correct_grab for each grab the clip reviewer was sure about (skip ones marked 'needs owner'), then say how many you confirmed.
+- "How did yesterday go?" -> the analyst subagent. "What should I order for the weekend?" -> the purchasing subagent. "Check the flagged grabs" -> the clip-reviewer subagent. Run independent subagents in parallel.
 - When the owner corrects you, act on it: "that grab was a put-back / was cheese" -> correct_grab; "our pepperoni par is 25 now" -> set_par. Then confirm in one line, and note the preference in /memories/shop.md (read it when relevant).
 Today's date in the shop's timezone: {today}."""
 
 ANALYST = {
     "name": "analyst",
-    "description": "Explains why an ingredient is over or under: compares register sales to camera usage by day and checks grab clips with d1.",
-    "system_prompt": ("You investigate inventory variance for a restaurant (pizza kitchen and drinks). Use get_variance day by day to find when the gap "
-                      "happens, list_grabs to see the camera events, and d1_look to check specific grabs. Report findings "
-                      "as short factual bullet points with the exact numbers from tools. Never speculate about people."),
-    "tools": [get_variance, list_grabs, d1_look, get_stock],
+    "description": ("Explains what changed and why: yesterday vs a normal day (usage_trend), register sales vs camera "
+                    "usage (get_variance), and the clips behind a gap (d1_look). Use for 'how did yesterday go' and "
+                    "'why are we short/over'."),
+    "system_prompt": ("You analyse inventory for a restaurant (pizza kitchen and drinks). Start with usage_trend for "
+                      "day-over-normal changes; use get_variance for sales-vs-camera gaps; check 1-2 specific grabs with "
+                      "d1_look when a gap needs evidence. Report 3 short bullets max, biggest first: item, the exact "
+                      "numbers from tools, and the pattern (weekday, time of day). Never speculate about people."),
+    "tools": [usage_trend, get_variance, list_grabs, d1_look, get_stock],
+}
+CLIP_REVIEWER = {
+    "name": "clip-reviewer",
+    "description": ("Re-checks the camera grabs the system wasn't sure about, clip by clip with d1, and suggests what "
+                    "really happened, so the owner just confirms instead of investigating."),
+    "system_prompt": ("You review flagged camera grabs. Call flagged_grabs, then for each grab ask d1_look focused "
+                      "questions (e.g. 'Did the hand take, put back, or only touch?' with those options; 'How many "
+                      "cans/bottles were taken?' with '1','2','3','more'). For each grab return one line: grab_id, "
+                      "suggested action, item, count/amount, and the probability d1 gave. If d1 is unsure (<0.7), "
+                      "say 'needs owner'. You cannot change anything; the owner confirms."),
+    "tools": [flagged_grabs, d1_look, list_grabs],
 }
 PURCHASING = {
     "name": "purchasing",
-    "description": "Works out what to reorder: compares on-hand stock to par levels and recent daily usage.",
-    "system_prompt": ("You plan reorders for a restaurant (pizza kitchen and drinks). Use get_stock and get_variance to find items below par and "
-                      "estimate days of stock left from recent usage. Return a short list: item, on hand, par, suggested qty."),
-    "tools": [get_stock, get_variance, reorder_plan],
+    "description": ("Plans orders for the next few days: weekday-aware demand forecast vs stock, on-order and par. "
+                    "Use for 'what should I order (for the weekend)?'."),
+    "system_prompt": ("You plan orders for a restaurant (pizza kitchen and drinks). Use demand_forecast (default 3 days) "
+                      "for what will be used, and reorder_plan for anything already below par. Recommend the larger of "
+                      "the two per item, skip items with enough on hand + on order. Return: item, qty, cost, one-line "
+                      "reason ('forecast 14 for the weekend, have 6'), and the total. Exact numbers from tools only."),
+    "tools": [demand_forecast, reorder_plan, get_stock, usage_trend],
 }
 
 
@@ -103,13 +123,16 @@ def build_agent(model: str | BaseChatModel, *, checkpointer, store=None, d1_clie
     if store is not None:
         backend = CompositeBackend(default=StateBackend(),
                                    routes={"/memories/": StoreBackend(namespace=lambda rt: ("shop", "memories"),
-                                                                      store=store)})
+                                                                      store=store),
+                                           # morning briefings persist, so "confirm grabs" can act on them later
+                                           "/reports/": StoreBackend(namespace=lambda rt: ("shop", "reports"),
+                                                                     store=store)})
     return create_deep_agent(
         model=_model(model),
         tools=ALL_TOOLS,
         system_prompt=SYSTEM_PROMPT.format(today=datetime.now(TZ).date().isoformat()),
         middleware=middleware,
-        subagents=[ANALYST, PURCHASING, GENERAL],
+        subagents=[ANALYST, CLIP_REVIEWER, PURCHASING, GENERAL],
         interrupt_on={"place_order": True, "place_orders": True},
         backend=backend,
         checkpointer=checkpointer,

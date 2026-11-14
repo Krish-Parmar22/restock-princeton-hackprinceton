@@ -1,5 +1,5 @@
 """Daily reorder-plan text: at PLAN_TIME (shop-local, America/New_York) the agent texts the owner
-today's reorder plan (runtime.send_reorder_plan). Started from app/api/server.py lifespan when
+the morning briefing (runtime.send_morning_briefing: how yesterday went, grabs to confirm, reorder). Started from app/api/server.py lifespan when
 PLAN_TIME is set. Fires at most once per shop-local day; a server (re)started after the day's
 PLAN_TIME waits for tomorrow rather than re-sending.
 """
@@ -47,8 +47,8 @@ class DailyPlan:
     def send(self) -> object:
         if self._send is not None:
             return self._send()
-        from app.agent.runtime import send_reorder_plan
-        return send_reorder_plan()
+        from app.agent.runtime import send_morning_briefing   # yesterday + flagged grabs + reorder, one text
+        return send_morning_briefing()
 
     def tick(self) -> bool:
         """Send if due. Never raises. Returns True if it attempted a send."""
