@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.config import settings
 from app.contracts import GrabConfirm, GrabFrames, GrabRow, InventoryRow, MessageRow, VarianceRow
@@ -40,7 +40,7 @@ def inventory():
 
 
 @router.get("/api/variance", response_model=list[VarianceRow])
-def variance(start: date | None = None, end: date | None = None):
+def variance(start: date | None = Query(None, alias="from"), end: date | None = Query(None, alias="to")):
     ids = [g.grab_id for g in _fake_grabs() if g.zone == "pepperoni"]
     return [
         VarianceRow(item="pepperoni", theoretical=10.0, actual=12.0, unit="lb", variance_qty=2.0, variance_usd=9.00, grab_ids=ids),
@@ -49,7 +49,7 @@ def variance(start: date | None = None, end: date | None = None):
 
 
 @router.get("/api/grabs", response_model=list[GrabRow])
-def grabs(day: date | None = None, status: str = "all"):
+def grabs(day: date | None = Query(None, alias="date"), status: str = "all"):
     rows = _fake_grabs()
     return rows if status == "all" else [g for g in rows if g.status == status]
 
