@@ -1,7 +1,7 @@
 # Princeton Hacks: the restaurant inventory that keeps itself
 
-**A $30 webcam watches a restaurant's shelves and an AI agent keeps the inventory, so the owner never counts by hand again: every grab is checked by a vision model and logged, and the owner runs the shop by text (stock, reorders, their Excel sheet, even the bank balance behind a code).**
-**We tested it live for 4 hours at a family Italian restaurant, on the drinks fridge out front (we weren't allowed into the kitchen), where one can = one unit makes every count exact and checkable.**
+**A webcam watches a restaurant's shelves and an AI agent keeps the inventory, so the owner never counts by hand again: every grab is checked by a vision model and logged, and the owner runs the shop by text (stock, reorders, their Excel sheet, even the bank balance behind a code).**
+**We tested it live for 4 hours on the drinks fridge of a family Italian restaurant (the kitchen was off-limits), where one can = one unit makes every count exact and checkable.**
 
 ![Our team with the owner](docs/media/team-with-owner.jpg)
 
