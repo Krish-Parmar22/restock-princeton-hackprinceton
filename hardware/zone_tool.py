@@ -234,18 +234,27 @@ def main():
                         help="Camera index (0=iPhone via USB-C, 1=built-in)")
     parser.add_argument("--load", action="store_true",
                         help="Load existing zones.json for editing")
+    parser.add_argument("--image", help="Draw on a saved snapshot instead of a live camera "
+                                        "(from `main.py --snapshot` on a headless board)")
     args = parser.parse_args()
 
-    cap = cv2.VideoCapture(args.camera, cv2.CAP_AVFOUNDATION)
-    if not cap.isOpened():
-        print(f"Cannot open camera {args.camera}")
-        sys.exit(1)
-
-    ret, frame = cap.read()
-    cap.release()
-    if not ret:
-        print("Failed to grab frame")
-        sys.exit(1)
+    if args.image:
+        frame = cv2.imread(args.image)
+        if frame is None:
+            print(f"Cannot read {args.image}")
+            sys.exit(1)
+    else:
+        from camera import open_camera, read_frame
+        cap = open_camera(args.camera)
+        if not cap.isOpened():
+            print(f"Cannot open camera {args.camera}")
+            sys.exit(1)
+        frame = read_frame(cap)
+        cap.release()
+        if frame is None:
+            print("Failed to grab frame")
+            sys.exit(1)
+    print(f"Drawing on a {frame.shape[1]}x{frame.shape[0]} frame. Name zones after the ingredient: pepperoni, cheese, dough, sauce.")
 
     tool = ZoneTool(frame)
 

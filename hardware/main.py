@@ -21,6 +21,7 @@ import time
 
 import cv2
 
+from camera import open_camera, read_frame, zones_fit
 from grab_cutter import GrabCutter
 from motion_trigger import MotionTrigger
 from pipeline import PiPipeline
@@ -74,6 +75,7 @@ def main():
     parser.add_argument("--api-url", default=os.getenv("UPLOAD_URL", ""), help="Laptop API base URL, e.g. http://192.168.1.20:8000 (empty=no uploads)")
     parser.add_argument("--upload-token", default=os.getenv("UPLOAD_TOKEN", ""), help="Shared secret sent as X-Upload-Token")
     parser.add_argument("--camera-id", default="pi-makeline-1", help="Fixed name for this camera in meta.json")
+    parser.add_argument("--snapshot", metavar="PATH", help="Save one frame to PATH and exit (draw zones from it on a laptop)")
     args = parser.parse_args()
 
     worker = None
@@ -87,23 +89,32 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # open camera
-    cap = cv2.VideoCapture(args.camera, cv2.CAP_AVFOUNDATION)
+    # open camera (AVFoundation on macOS, V4L2 on the Pi / UNO Q)
+    cap = open_camera(args.camera)
     if not cap.isOpened():
         print(f"[ERROR] Cannot open camera {args.camera}")
-        print("Grant camera access in System Settings > Privacy & Security > Camera")
+        print("macOS: grant camera access in System Settings > Privacy & Security > Camera. Linux: ls /dev/video*")
         sys.exit(1)
 
     # grab one frame to get dimensions
-    ret, test_frame = cap.read()
-    if not ret:
+    test_frame = read_frame(cap)
+    if test_frame is None:
         print("[ERROR] Camera opened but cannot read frames")
         sys.exit(1)
     h, w = test_frame.shape[:2]
     print(f"[main] camera {args.camera}: {w}x{h}, source={args.source}")
 
+    if args.snapshot:   # one frame for drawing zones elsewhere (headless boards): zone_tool.py --image
+        cv2.imwrite(args.snapshot, test_frame)
+        print(f"[main] saved snapshot {args.snapshot} ({w}x{h})")
+        return
+
     # load zones
     zones = load_zones()
+    bad = zones_fit(zones, w, h)
+    if bad:
+        print(f"[ERROR] zones {bad} fall outside the {w}x{h} frame: they were drawn at another resolution. Redraw them.")
+        sys.exit(1)
     zone_points = {z["name"]: z["points"] for z in zones}
 
     # init modules
