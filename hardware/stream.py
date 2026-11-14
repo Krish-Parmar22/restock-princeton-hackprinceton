@@ -107,7 +107,7 @@ ol{color:var(--mut);margin:4px 0 0 18px;padding:0}
 <div class="wrap"><img id="feed" src="/stream"><canvas id="cv"></canvas></div>
 <ol id="list"></ol>
 </main><script>
-const W=FRAME_W,H=FRAME_H,key=new URLSearchParams(location.search).get('key')||'';
+const W=FRAME_W,H=FRAME_H;
 let zones=[],cur=[],dirty=false;const cv=document.getElementById('cv'),ctx=cv.getContext('2d'),msg=document.getElementById('msg');
 function say(t,c){msg.textContent=t;msg.className=c||''}
 function fit(){const r=document.getElementById('feed').getBoundingClientRect();cv.width=r.width;cv.height=r.height;draw()}
@@ -124,7 +124,7 @@ document.getElementById('clear').onclick=()=>{zones=[];cur=[];dirty=true;draw();
 document.getElementById('finish').onclick=()=>{const n=document.getElementById('name').value;
  if(cur.length<3)return say('Click at least 3 corners first.','err');
  zones=zones.filter(z=>z.name!==n);zones.push({name:n,points:cur});cur=[];dirty=true;draw();say(n+' box ready. Add more, or Save.')};
-document.getElementById('save').onclick=async()=>{const r=await fetch('/zones'+(key?'?key='+encodeURIComponent(key):''),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(zones)});
+document.getElementById('save').onclick=async()=>{const r=await fetch('/zones',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(zones)});
  const j=await r.json();if(r.ok){dirty=false;draw()}if(r.ok)say('Saved '+zones.length+' box(es). The camera is using them now.','good');else say(j.error||'Save failed','err')};
 fetch('/zones').then(r=>r.json()).then(z=>{zones=z;draw()});
 window.addEventListener('resize',fit);document.getElementById('feed').addEventListener('load',fit,{once:true});setTimeout(fit,800);
@@ -144,8 +144,32 @@ def serve(state: StreamState, port: int) -> ThreadingHTTPServer:
             self.end_headers()
             self.wfile.write(body)
 
+        def _authed(self) -> bool:
+            """With a key set (public link), every page needs it: ?key=... once, then a cookie."""
+            if not state.key:
+                return True
+            q = parse_qs(urlparse(self.path).query).get("key", [""])[0]
+            cookie = next((c.split("=", 1)[1] for c in (self.headers.get("cookie") or "").split("; ")
+                           if c.startswith("camkey=")), "")
+            return hmac.compare_digest(q, state.key) or hmac.compare_digest(cookie, state.key)
+
+        def _login(self):
+            body = (b"<!doctype html><meta name=viewport content='width=device-width'><title>Camera</title>"
+                    b"<body style='font:16px system-ui;background:#111;color:#eee;display:grid;place-items:center;height:90vh'>"
+                    b"<form><p>Camera key</p><input name=key type=password autofocus style='font:inherit;padding:8px'>"
+                    b" <button style='font:inherit;padding:8px 14px'>Open</button></form>")
+            self._send(401, body, "text/html; charset=utf-8")
+
         def do_GET(self):  # noqa: N802
             path = urlparse(self.path).path
+            if not self._authed():
+                return self._login() if path == "/" else self._send(401, b"key required", "text/plain")
+            if state.key and "key=" in (urlparse(self.path).query or ""):   # remember it, drop it from the URL
+                self.send_response(303)
+                self.send_header("set-cookie", f"camkey={state.key}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200")
+                self.send_header("location", path)
+                self.end_headers()
+                return
             if path == "/":
                 opts = "".join(f"<option>{i}</option>" for i in state.items)
                 page = PAGE.replace("ITEM_OPTIONS", opts).replace("FRAME_W", str(state.size[0])).replace("FRAME_H", str(state.size[1]))
@@ -180,8 +204,8 @@ def serve(state: StreamState, port: int) -> ThreadingHTTPServer:
             u = urlparse(self.path)
             if u.path != "/zones":
                 return self._send(404, b"not found", "text/plain")
-            if state.key and not hmac.compare_digest(parse_qs(u.query).get("key", [""])[0], state.key):
-                return self._send(403, json.dumps({"error": "open this page with ?key=<upload token> to save"}).encode(), "application/json")
+            if not self._authed():
+                return self._send(403, json.dumps({"error": "camera key required"}).encode(), "application/json")
             try:
                 zones = json.loads(self.rfile.read(int(self.headers.get("content-length", 0))))
             except Exception:

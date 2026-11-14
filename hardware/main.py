@@ -76,6 +76,7 @@ def main():
     parser.add_argument("--upload-token", default=os.getenv("UPLOAD_TOKEN", ""), help="Shared secret sent as X-Upload-Token")
     parser.add_argument("--camera-id", default="pi-makeline-1", help="Fixed name for this camera in meta.json")
     parser.add_argument("--stream-port", type=int, default=0, help="Serve a live view + box editor on this port (e.g. 8090)")
+    parser.add_argument("--stream-key", default="", help="Password for the live view (or CAMERA_KEY env). Set it before sharing a public link.")
     parser.add_argument("--snapshot", metavar="PATH", help="Save one frame to PATH and exit (draw zones from it on a laptop)")
     args = parser.parse_args()
 
@@ -136,10 +137,10 @@ def main():
                 items = sorted(r["item"] for r in requests.get(f"{args.api_url.rstrip('/')}/api/inventory", timeout=5).json())
             except Exception as e:
                 print(f"[main] couldn't read items from the API ({e}); using the default list")
-        stream = StreamState(zones, w, h, key=args.upload_token, items=items)
+        stream = StreamState(zones, w, h, key=args.stream_key or os.getenv("CAMERA_KEY", ""), items=items)
         serve(stream, args.stream_port)
         print(f"[main] live view + box editor: http://<this-board>:{args.stream_port}"
-              + ("/?key=<upload token>" if args.upload_token else ""))
+              + (" (password protected)" if (args.stream_key or os.getenv("CAMERA_KEY")) else ""))
 
     zone_state: dict[str, bool] = {}
     frame_interval = 1.0 / args.fps

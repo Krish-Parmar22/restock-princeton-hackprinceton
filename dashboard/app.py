@@ -105,6 +105,18 @@ def grab_caption(g: dict) -> str:
     return f"**{t}** · {label(g['zone'])} bin · {label(g.get('action'))} {label(g.get('qty_label'))} of {label(g.get('item'))} · confidence {conf} · `{g['status']}`"
 
 
+# ---------- password (public demo link) ----------
+VIEW_KEY = os.getenv("DASHBOARD_VIEW_KEY", "")
+if VIEW_KEY and not st.session_state.get("viewer_ok"):
+    st.title("🍕 Inventory")
+    pw = st.text_input("Password", type="password")
+    if pw and hmac.compare_digest(pw, VIEW_KEY):
+        st.session_state["viewer_ok"] = True
+        st.rerun()
+    elif pw:
+        st.error("Wrong password.")
+    st.stop()
+
 # ---------- sidebar ----------
 a = api()
 today = date.today()

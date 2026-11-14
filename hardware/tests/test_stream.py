@@ -47,15 +47,21 @@ def test_page_frame_and_zone_save_round_trip():
     try:
         base = f"http://127.0.0.1:{port}"
         s.publish(np.full((480, 640, 3), 90, np.uint8), {"cheese": True}, "grabs: 0")
-        page = urllib.request.urlopen(base + "/", timeout=5).read().decode()
+        try:
+            urllib.request.urlopen(base + "/frame.jpg", timeout=5)
+            raise AssertionError("a keyed camera must not serve frames without the key")
+        except urllib.error.HTTPError as e:
+            assert e.code == 401
+        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor())
+        urllib.request.install_opener(opener)
+        page = urllib.request.urlopen(base + "/?key=k", timeout=5).read().decode()   # sets the cookie
         assert "Bin camera" in page and "<option>pepperoni</option>" in page and "640" in page
         assert urllib.request.urlopen(base + "/frame.jpg", timeout=5).read()[:2] == b"\xff\xd8"
         assert json.loads(urllib.request.urlopen(base + "/zones", timeout=5).read()) == zones
 
         new = [{"name": "pepperoni", "points": [[5, 5], [300, 5], [300, 300]]}]
-        code, body = _post(base + "/zones", new)
-        assert code == 403, "saving needs the key when an upload token is set"
-        code, body = _post(base + "/zones?key=k", new)
+        code, body = _post(base + "/zones", new)      # cookie from the login
+
         assert code == 200 and s.take_pending() == new and s.take_pending() is None
 
         r = urllib.request.urlopen(base + "/stream", timeout=5)
@@ -63,5 +69,6 @@ def test_page_frame_and_zone_save_round_trip():
         assert b"--frame" in r.read(200)
         r.close()
     finally:
+        urllib.request.install_opener(urllib.request.build_opener())
         srv.shutdown()
         time.sleep(0.1)
