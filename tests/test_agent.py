@@ -212,3 +212,11 @@ def test_guard_blocks_wrong_number_even_if_d1_says_yes(fake_ledger):
     yes = KeywordD1(bad=(), meh=())                         # d1 says 0.95 to everything
     assert score_message("That gap is worth about $92.70 this week.", state, yes)[0] == 0.0
     assert score_message("That gap is worth about $9.27 this week.", state, yes)[0] >= 0.9
+
+
+def test_guard_accepts_one_step_arithmetic_on_evidence():
+    """Live E2E (Nov 14): 'Pepperoni is 8.75 lb below par' (50 - 41.25) was wrongly blocked."""
+    from app.agent.guard import numbers_check
+    ev = '{"on_hand": 41.25, "par": 50.0}'
+    assert numbers_check("Pepperoni is 8.75 lb below par.", ev) is True
+    assert numbers_check("Pepperoni is 18.75 lb below par.", ev) is False

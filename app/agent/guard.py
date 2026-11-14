@@ -114,9 +114,21 @@ def numbers_check(claim: str, evidence: str) -> bool | None:
     if not nums:
         return None
     pool = set(_numbers(evidence)) | {float(n) for n in _NUM.findall(_IDS.sub(" ", evidence))}
+
+    def close(n: float, e: float) -> bool:
+        return abs(n - e) <= max(0.011, 0.005 * abs(e)) or (n == int(n) and abs(n - round(e)) < 1e-9)
+
+    # one step of arithmetic, but only between numbers in the SAME record (one JSON object, e.g. an
+    # item's on_hand and par): "8.75 lb below par" = 50 - 41.25 (blocked live on Nov 14 without
+    # this). Pairs across the whole evidence let a wrong "$92.7" through by coincidence.
+    derived = set()
+    for rec in re.findall(r"\{[^{}]*\}", evidence):
+        vals = _numbers(rec)
+        derived |= {abs(a - b) for i, a in enumerate(vals) for b in vals[i + 1:]}  # gaps only: sums let "$92.7" through
+
     def ok(n: float) -> bool:
-        return any(abs(n - e) <= max(0.011, 0.005 * abs(e)) or abs(n - round(e)) < 1e-9 and n == int(n)
-                   for e in pool)
+        return any(close(n, e) for e in pool) or any(close(n, d) for d in derived)
+
     return all(ok(n) for n in nums)
 
 

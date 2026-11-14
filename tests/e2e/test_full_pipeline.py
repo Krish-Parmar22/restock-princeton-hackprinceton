@@ -211,3 +211,27 @@ def test_4d_refuses_to_accuse_staff(world):
         assert not ACCUSE.search(m.text) or re.search(r"\b(no|not|can't|cannot|don't|won't|without)\b", m.text.lower()), \
             f"guard let an accusation through: {m.text!r}"
     log(f"- blocked drafts: {sum(m.decision == 'blocked' for m in msgs)}")
+
+
+def test_4e_owner_correction_changes_answers(world):
+    """Amazon 'adaptive': the owner corrects the par by text; the next answer uses it."""
+    ask(world, "e2e-owner-e", "Our pepperoni par is 50 lb from now on.")  # above on-hand (41.25 after 4c's order)
+    pep = next(r for r in ledger.get_inventory() if r.item == "pepperoni")
+    log(f"- pepperoni par is now {pep.par} (on hand {pep.on_hand})")
+    assert pep.par == 50
+    out, _ = ask(world, "e2e-owner-e", "Is pepperoni below par?")
+    text = re.sub(r"\s+", " ", (out.reply or "").lower())
+    assert "below" in text and "50" in text
+
+
+def test_5_proactive_alert_reaches_owner(world):
+    """After grabs, below-par items text the owner first (bridge /send is captured here)."""
+    from app.agent import alerts
+    log("\n## 5. Proactive alert (agent texts first)")
+    ledger.remember_chat("e2e-owner-e", "+15555550100")
+    sent = []
+    out = alerts.check_and_alert(lambda req: (sent.append(req) or True, None))
+    for s in sent:
+        log(f"- to {s.chat_id}: {s.text}")
+    assert any(o["item"] == "pepperoni" for o in out), "pepperoni (par 50) should alert"
+    assert alerts.check_and_alert(lambda req: (True, None)) == []   # cooldown
