@@ -15,10 +15,12 @@ Unverified until a real key is used: the exact `type` value for an asset (we sen
 from __future__ import annotations
 
 import os
+import time
 
 from app.d1.liquid import LiquidD1, LiquidD1Error, build_request
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/systemone"
+RETRY_STATUS = {429, 500, 502, 503, 504, 524, 529}
 OPENROUTER_D1_MODEL = os.getenv("OPENROUTER_D1_MODEL", "liquid/d1")
 
 
@@ -53,7 +55,18 @@ class OpenRouterD1(LiquidD1):
         from app.d1.liquid import _error_message, parse_response
 
         body = to_openrouter(build_request(questions, state, images, model=self.model, max_side=self.max_side))
-        resp = self.http.post(self.url, json=body)
+        resp = None
+        for wait in (0, 1.5, 4.0):  # retry gateway/overload errors: seen live (504) on Nov 13
+            if wait:
+                time.sleep(wait)
+            try:
+                resp = self.http.post(self.url, json=body)
+            except Exception as e:  # network blip / timeout
+                if wait == 4.0:
+                    raise LiquidD1Error(f"OpenRouter d1 unreachable: {e}") from e
+                continue
+            if resp.status_code not in RETRY_STATUS:
+                break
         if resp.status_code != 200:
             raise LiquidD1Error(_error_message(resp).replace("Liquid d1", "OpenRouter d1"))
         data = resp.json()

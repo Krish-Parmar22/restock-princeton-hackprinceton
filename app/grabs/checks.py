@@ -8,7 +8,11 @@ The state text of each request says which image position is which.
 from __future__ import annotations
 
 import logging
+import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING, Callable
+
+from PIL import Image
 
 from app.config import settings
 
@@ -156,13 +160,42 @@ def decide(answers: dict[str, D1Answer], min_prob: float, zone: str | None = Non
     }
 
 
+CROP_MARGIN = 0.35  # extra context around the bin on each side (fraction of the bin's size)
+
+
+def crop_to_zone(pkg: GrabPackage, out_dir: Path) -> GrabPackage:
+    """Copy of `pkg` whose frames are cropped to the bin's zone (+ margin), so d1 compares the bin
+    itself instead of a ~100 px patch of a busy full frame. No zone_polygon: unchanged."""
+    poly = pkg.meta.zone_polygon
+    if not poly:
+        return pkg
+    xs, ys = [p[0] for p in poly], [p[1] for p in poly]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    mx, my = (x1 - x0) * CROP_MARGIN, (y1 - y0) * CROP_MARGIN
+
+    def crop(path: Path) -> Path:
+        with Image.open(path) as im:
+            w, h = im.size
+            box = (max(0, int(x0 - mx)), max(0, int(y0 - my)), min(w, int(x1 + mx)), min(h, int(y1 + my)))
+            if box[2] - box[0] < 16 or box[3] - box[1] < 16:
+                return path  # polygon is off-frame or degenerate: send the full frame
+            out = out_dir / path.name
+            im.crop(box).convert("RGB").save(out, quality=92)
+            return out
+
+    return pkg.model_copy(update={"before": crop(pkg.before), "during": [crop(p) for p in pkg.during],
+                                  "after": crop(pkg.after)})
+
+
 def check_grab(pkg: GrabPackage, items: list[str], client: D1Client,
                hand_check: Callable[[GrabPackage], "HandCheck"] | None = None) -> tuple[dict, list[dict]]:
     """Ask d1 about one grab package, then (optionally) double-check with YOLO-World that a hand
     was really inside the bin's zone. Returns (row, d1_answers) for app.ledger.api.record_grab."""
     answers: dict[str, D1Answer] = {}
-    for req in build_questions(pkg, items):
-        answers.update(client.ask(req["questions"], req["state"], req["images"]))
+    with tempfile.TemporaryDirectory(prefix="d1crop-") as td:
+        d1_pkg = crop_to_zone(pkg, Path(td))  # d1 sees the bin up close; YOLO + the ledger keep originals
+        for req in build_questions(d1_pkg, items):
+            answers.update(client.ask(req["questions"], req["state"], req["images"]))
 
     d = decide(answers, settings.autolog_min_prob, zone=pkg.meta.zone)
     yolo = None

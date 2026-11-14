@@ -112,11 +112,12 @@ def test_images_are_labelled_by_position(tmp_path):
     check_grab(p, ITEMS, d1)
     (bin_q, bin_state, bin_imgs), (grab_q, grab_state, grab_imgs) = d1.calls
     assert [q.id for q in bin_q] == ["bin_change"]
-    assert bin_imgs == [p.before, p.after]
+    names = lambda paths: [Path(x).name for x in paths]  # d1 gets zone-cropped copies, same filenames
+    assert names(bin_imgs) == ["before.jpg", "after.jpg"]
     assert "Image 1 is BEFORE" in bin_state and "Image 2 is AFTER" in bin_state
     assert len(grab_imgs) == MAX_IMAGES
-    assert grab_imgs[0] == p.before and grab_imgs[-1] == p.after
-    assert grab_imgs[1] == p.during[0] and grab_imgs[-2] == p.during[-1]
+    assert names(grab_imgs)[0] == "before.jpg" and names(grab_imgs)[-1] == "after.jpg"
+    assert names(grab_imgs)[1] == p.during[0].name and names(grab_imgs)[-2] == p.during[-1].name
     assert "Image 1 is BEFORE" in grab_state and "Images 2 to 7 are DURING" in grab_state
     assert "Image 8 is AFTER" in grab_state
     item_q = next(q for q in grab_q if q.id == "item")
@@ -393,3 +394,17 @@ def test_zone_overlap_math():
     assert _overlap_in_zone((400, 400, 500, 500), zone, None) == 0.0
     assert 0.4 < _overlap_in_zone((200, 150, 400, 250), zone, None) < 0.6
     assert _overlap_in_zone((0, 0, 10, 10), None, None) == 1.0   # no polygon: whole frame
+
+
+def test_d1_gets_frames_cropped_to_the_zone(tmp_path):
+    from PIL import Image
+    from app.grabs.checks import crop_to_zone
+    folder = make_fake_grabs.make(tmp_path / "g", "2026-11-14")[0]
+    p = GrabPackage.load(folder)
+    c = crop_to_zone(p, tmp_path)
+    with Image.open(p.before) as full, Image.open(c.before) as crop:
+        assert crop.size[0] < full.size[0] and crop.size[1] < full.size[1]
+    # 300x260 zone + 35% margin each side, clipped to the 640x480 frame
+    assert Image.open(c.after).size == (510, 442)
+    no_poly = p.model_copy(update={"meta": p.meta.model_copy(update={"zone_polygon": None})})
+    assert crop_to_zone(no_poly, tmp_path) is no_poly

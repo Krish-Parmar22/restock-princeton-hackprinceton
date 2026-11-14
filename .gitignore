@@ -11,3 +11,5 @@ data/real/
 !.env.example
 .pytest_cache/
 models/
+tests/e2e/.cache/
+weights/
