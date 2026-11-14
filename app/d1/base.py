@@ -67,6 +67,10 @@ class FakeD1:
 def get_client() -> D1Client:
     from app.config import settings
 
+    if settings.d1_backend == "openrouter":
+        from app.d1.openrouter import OpenRouterD1
+
+        return OpenRouterD1(api_key=settings.openrouter_api_key)
     if settings.d1_backend == "liquid":
         from app.d1.liquid import LiquidD1  # implemented by the d1 workstream
 

@@ -57,7 +57,18 @@ PURCHASING = {
 
 
 def _model(spec: str | BaseChatModel) -> BaseChatModel:
-    return init_chat_model(spec) if isinstance(spec, str) else spec
+    """'openrouter:<model>' (e.g. openrouter:openai/gpt-oss-120b) uses OpenRouter's OpenAI-compatible
+    API with OPENROUTER_API_KEY; anything else goes to LangChain's init_chat_model."""
+    if not isinstance(spec, str):
+        return spec
+    if spec.startswith("openrouter:"):
+        from langchain_openai import ChatOpenAI
+
+        if not settings.openrouter_api_key:
+            raise ValueError("AGENT_MODEL uses openrouter: but OPENROUTER_API_KEY is empty (openrouter.ai/settings/keys)")
+        return ChatOpenAI(model=spec.split(":", 1)[1], base_url="https://openrouter.ai/api/v1",
+                          api_key=settings.openrouter_api_key)
+    return init_chat_model(spec)
 
 
 def build_agent(model: str | BaseChatModel, *, checkpointer, store=None, d1_client: D1Client | None = None,

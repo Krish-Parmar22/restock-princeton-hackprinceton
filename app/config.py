@@ -15,8 +15,9 @@ load_dotenv(ROOT / ".env")
 class Settings:
     database_url: str = os.getenv("DATABASE_URL", "postgresql://localhost:5432/pizza")
     grabs_dir: Path = Path(os.getenv("GRABS_DIR", str(ROOT / "grabs"))).resolve()
-    d1_backend: str = os.getenv("D1_BACKEND", "fake")  # 'liquid' | 'fake'
+    d1_backend: str = os.getenv("D1_BACKEND", "fake")  # 'openrouter' | 'liquid' | 'fake'
     liquid_api_key: str = os.getenv("LIQUID_API_KEY", "")
+    openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
     agent_model: str = os.getenv("AGENT_MODEL", "")
     fallback_model: str = os.getenv("FALLBACK_MODEL", "anthropic:claude-sonnet-5-5")
     bridge_url: str = os.getenv("BRIDGE_URL", "http://localhost:8787")

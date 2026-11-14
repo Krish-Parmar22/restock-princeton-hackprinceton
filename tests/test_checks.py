@@ -334,3 +334,15 @@ def test_watcher_module_uses_ledger_api(monkeypatch):
     monkeypatch.setattr("app.ledger.api.record_grab", lambda row, ans: got.append(row))
     watcher_mod._record({"grab_id": "g"}, [])
     assert got == [{"grab_id": "g"}]
+
+
+def test_openrouter_body_moves_images_to_assets(pkg):
+    from app.d1.liquid import build_request
+    from app.d1.openrouter import to_openrouter
+    q = D1Question(id="bin_change", type="choice", instructions="Emptier?", options=("emptier", "fuller", "same"))
+    body = to_openrouter(build_request([q], "Image 1 is BEFORE, image 2 is AFTER.", [pkg.before, pkg.after], model="liquid/d1"))
+    assert "images" not in body and body["model"] == "liquid/d1"
+    assert body["state"] == ["Image 1 is BEFORE, image 2 is AFTER.", "img_0", "img_1"]
+    assert set(body["assets"]) == {"img_0", "img_1"}
+    a = body["assets"]["img_0"]
+    assert a["format"] == "jpeg" and not a["data_base64"].startswith("data:")
