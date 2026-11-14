@@ -287,7 +287,7 @@ def briefing_facts(day: str | None = None) -> str:
             order[f["item"]] = {"item": f["item"], "qty": f["order_to_cover"], "unit": f["unit"], "cost": f["cost"]}
     items = sorted(order.values(), key=lambda o: -o["cost"])
     total = round(sum(o["cost"] for o in items), 2)
-    lines = []
+    lines = ["Good morning! Here's your debrief:"]
     if top:
         word = "up" if top["change_pct"] >= 0 else "down"
         lines.append(f"Yesterday: {top['item'].replace('_', ' ')} {word} {abs(top['change_pct'])}% "

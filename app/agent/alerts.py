@@ -42,10 +42,13 @@ def check_and_alert(send=None) -> list[dict]:
         if not row.below_par:
             continue
         text = below_par_text(row)
+        photo = None
         for chat in chats:
             if ledger.recently_alerted("below_par", row.item, ALERT_COOLDOWN_H, chat_id=chat):
                 continue
-            ok, err = send(SendRequest(chat_id=chat, text=text))
+            if photo is None:
+                photo = grab_photo(row.item) or ""
+            ok, err = send(SendRequest(chat_id=chat, text=text, images=[photo] if photo else []))
             ledger.record_message(chat, text, None, "sent" if ok else "blocked",
                                   [] if ok else [{"claim": "bridge refused", "error": err}])
             if ok:
@@ -54,6 +57,40 @@ def check_and_alert(send=None) -> list[dict]:
             else:
                 log.warning("alert to %s not delivered: %s", chat, err)
     return sent
+
+
+def grab_photo(item: str) -> str | None:
+    """BEFORE | AFTER of the latest grab that took this item, as one picture for iMessage."""
+    try:
+        from datetime import datetime
+        from pathlib import Path
+
+        import cv2
+        import numpy as np
+
+        from app import sheet
+        from app.ledger.impl import TZ
+        grabs = [g for g in ledger.list_grabs(datetime.now(TZ).date(), "all")
+                 if g.item == item and g.action == "took" and g.status in ("logged", "confirmed")]
+        if not grabs:
+            return None
+        g = max(grabs, key=lambda x: str(x.t_start))
+        ims = []
+        for label, path in (("BEFORE", g.frames.before), ("AFTER", g.frames.after)):
+            im = cv2.imread(str(path)) if path and Path(path).exists() else None
+            if im is None:
+                return None
+            im = cv2.resize(im, (640, int(640 * im.shape[0] / im.shape[1])))
+            cv2.rectangle(im, (0, 0), (150, 42), (0, 0, 0), -1)
+            cv2.putText(im, label, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
+            ims.append(im)
+        sheet.PNG_DIR.mkdir(parents=True, exist_ok=True)
+        out = sheet.PNG_DIR / f"grab-{g.grab_id}.jpg"
+        cv2.imwrite(str(out), np.hstack(ims), [cv2.IMWRITE_JPEG_QUALITY, 85])
+        return str(out)
+    except Exception:
+        log.exception("grab photo failed")
+        return None
 
 
 def _send_via_bridge(req: SendRequest) -> tuple[bool, str | None]:

@@ -195,8 +195,11 @@ def _final_ai_text(agent, config) -> str | None:
 
 def handle_inbound(msg: InboundMessage) -> InboundReply:
     try:  # remember who texted the line: Photon only lets us text chats that texted us first
+        from app import secure
         from app.ledger import api as ledger
         ledger.remember_chat(msg.chat_id, msg.sender)
+        shown = "•••••• (authenticator code)" if secure.looks_like_code(msg.text) else msg.text
+        ledger.record_message(msg.chat_id, shown, None, "received", [])   # owner's side of the thread
     except Exception:
         pass
     agent = get_agent()
