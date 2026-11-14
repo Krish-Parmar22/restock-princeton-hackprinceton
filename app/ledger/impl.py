@@ -348,3 +348,77 @@ def reorder_plan() -> list[dict]:
             out.append({"item": r.item, "unit": r.unit, "on_hand": r.on_hand, "on_order": r.on_order, "par": r.par,
                         "order_qty": qty, "unit_cost": r.unit_cost, "cost": round(qty * r.unit_cost, 2)})
     return sorted(out, key=lambda x: -x["cost"])
+
+
+def daily_usage(start: date, end: date) -> dict[str, dict[str, float]]:
+    """Camera-measured net usage per item per shop-local day (logged + confirmed grabs)."""
+    sql = f"""
+    SELECT i.name, (g.t_start AT TIME ZONE %(tz)s)::date AS d, {NET} AS used
+      FROM grab_events g JOIN items i ON i.id = g.item_id
+     WHERE {COUNTED} AND g.t_start >= %(a)s AND g.t_start < %(b)s
+     GROUP BY 1, 2"""
+    with _conn() as conn:
+        rows = conn.execute(sql, {"tz": str(TZ), "a": _day_start(start), "b": _day_start(end + timedelta(days=1))}).fetchall()
+    out: dict[str, dict[str, float]] = {}
+    for r in rows:
+        out.setdefault(r["name"], {})[r["d"].isoformat()] = _f(r["used"])
+    return out
+
+
+def usage_trend(day: date | None = None, lookback: int = 14) -> list[dict]:
+    """How `day` (default: yesterday) compares with a normal day, per item: the same weekday in the
+    previous weeks when there are at least 2 of them, else the average of the previous 7 days.
+    Also days of stock left at the recent daily rate and flagged grabs waiting on the owner.
+    All arithmetic here, so the agent only ever quotes these numbers."""
+    import statistics
+    day = day or (datetime.now(TZ).date() - timedelta(days=1))
+    hist = daily_usage(day - timedelta(days=lookback), day)
+    inv = {r.item: r for r in get_inventory()}
+    flagged: dict[str, int] = {}
+    for g in list_grabs(day, "flagged"):
+        key = g.item or g.zone
+        flagged[key] = flagged.get(key, 0) + 1
+    out = []
+    for item, row in sorted(inv.items()):
+        h = hist.get(item, {})
+        used = h.get(day.isoformat(), 0.0)
+        same_wd = [h.get((day - timedelta(days=7 * k)).isoformat(), 0.0) for k in range(1, lookback // 7 + 1)]
+        same_wd = [x for x, k in zip(same_wd, range(1, 99)) if (day - timedelta(days=7 * k)) >= day - timedelta(days=lookback)]
+        prev7 = [h.get((day - timedelta(days=k)).isoformat(), 0.0) for k in range(1, 8)]
+        if len([x for x in same_wd if x > 0]) >= 2:
+            typical, basis = statistics.mean(same_wd), f"same weekday, last {len(same_wd)} weeks"
+        else:
+            typical, basis = statistics.mean(prev7), "previous 7 days"
+        rate = statistics.mean(prev7 + [used])
+        change = None if typical <= 0 else round(100 * (used - typical) / typical)
+        out.append({
+            "item": item, "unit": row.unit, "day": day.isoformat(), "used": round(used, 2),
+            "typical": round(typical, 2), "typical_basis": basis, "change_pct": change,
+            "on_hand": row.on_hand, "on_order": row.on_order, "par": row.par,
+            "days_of_stock": None if rate <= 0 else round(row.on_hand / rate, 1),
+            "flagged_grabs": flagged.get(item, 0),
+        })
+    return out
+
+
+def demand_forecast(days: int = 3, lookback: int = 14) -> list[dict]:
+    """Expected usage for the next `days` days per item (same-weekday average where there's history,
+    else the recent daily average), and what to order so stock lasts that long plus par as safety."""
+    import math
+    import statistics
+    today = datetime.now(TZ).date()
+    hist = daily_usage(today - timedelta(days=lookback), today - timedelta(days=1))
+    out = []
+    for r in get_inventory():
+        h = hist.get(r.item, {})
+        recent = [h.get((today - timedelta(days=k)).isoformat(), 0.0) for k in range(1, 8)]
+        need = 0.0
+        for k in range(days):
+            d = today + timedelta(days=k)
+            wd = [h.get((d - timedelta(days=7 * w)).isoformat(), 0.0) for w in (1, 2)]
+            need += statistics.mean(wd) if any(wd) else statistics.mean(recent)
+        order = max(0, math.ceil(need + r.par - r.on_hand - r.on_order))
+        out.append({"item": r.item, "unit": r.unit, "expected_use": round(need, 1), "days": days,
+                    "on_hand": r.on_hand, "on_order": r.on_order, "par": r.par,
+                    "order_to_cover": order, "cost": round(order * r.unit_cost, 2)})
+    return sorted(out, key=lambda x: -x["cost"])

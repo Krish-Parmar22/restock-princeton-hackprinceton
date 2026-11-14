@@ -233,5 +233,35 @@ def get_bank_statement(days: int = 7) -> str:
     return _j(bank.statement(days))
 
 
+@tool
+def usage_trend(day: str | None = None) -> str:
+    """How a day (YYYY-MM-DD, default yesterday) compares with a normal day, per item: used vs typical
+    (same weekday in past weeks, or the previous 7 days), % change, days of stock left at the recent
+    rate, and flagged grabs waiting on the owner. Every number is computed in the ledger."""
+    rows = ledger.usage_trend(date.fromisoformat(day) if day else None)
+    return _j([r for r in rows if r["used"] or r["typical"] or r["flagged_grabs"]] or rows)
+
+
+@tool
+def demand_forecast(days: int = 3) -> str:
+    """Expected usage per item for the next `days` days (weekday-aware where history exists) and the
+    order that covers it plus par as a safety buffer. Use for "what should I order for the weekend?"."""
+    rows = ledger.demand_forecast(max(1, min(int(days), 14)))
+    return _j({"days": days, "items": rows, "total_cost": round(sum(r["cost"] for r in rows), 2)})
+
+
+@tool
+def flagged_grabs(day: str | None = None) -> str:
+    """Camera grabs the system wasn't sure about (status flagged) on a day (default today), with what
+    d1 thought. Use with d1_look to re-check each clip and suggest a correction to the owner."""
+    from datetime import datetime as _dt
+    from app.ledger.impl import TZ
+    d = date.fromisoformat(day) if day else _dt.now(TZ).date()
+    rows = ledger.list_grabs(d, "flagged")
+    return _j([{"grab_id": g.grab_id, "zone": g.zone, "action": g.action, "item": g.item,
+                "qty_label": g.qty_label, "confidence": g.confidence} for g in rows[:12]])
+
+
 ALL_TOOLS = [get_stock, get_variance, list_grabs, d1_look, send_text, place_order, place_orders, receive_delivery,
-             correct_grab, set_par, record_count, reorder_plan, show_sheet, get_bank_statement]
+             correct_grab, set_par, record_count, reorder_plan, show_sheet, get_bank_statement,
+             usage_trend, demand_forecast, flagged_grabs]

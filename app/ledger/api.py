@@ -107,3 +107,13 @@ def reorder_plan() -> list[dict]:
 def receive_orders(item: str | None = None) -> list[dict]:
     from app.ledger import impl
     return impl.receive_orders(item)
+
+
+def usage_trend(day=None, lookback: int = 14) -> list[dict]:
+    from app.ledger import impl
+    return impl.usage_trend(day, lookback)
+
+
+def demand_forecast(days: int = 3, lookback: int = 14) -> list[dict]:
+    from app.ledger import impl
+    return impl.demand_forecast(days, lookback)

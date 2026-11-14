@@ -66,6 +66,13 @@ def send_plan(chat_id: str | None = None):
     return send_reorder_plan([chat_id] if chat_id else None)
 
 
+@router.post("/api/briefing/send")
+def send_briefing(chat_id: str | None = None):
+    """The morning briefing now (demo button; the daily timer calls the same thing)."""
+    from app.agent.runtime import send_morning_briefing
+    return send_morning_briefing([chat_id] if chat_id else None)
+
+
 @router.get("/api/messages", response_model=list[MessageRow])
 def messages(limit: int = Query(50, ge=1, le=500)):
     return ledger.list_messages(limit)

@@ -279,6 +279,40 @@ PLAN_TASK = ("Morning reorder check. Call reorder_plan. If items are below par, 
              "one short line saying stock is fine and nothing needs ordering.")
 
 
+def briefing_task(day: str | None = None) -> str:
+    from datetime import datetime, timedelta
+
+    from app.ledger.impl import TZ
+    today = datetime.now(TZ).date()
+    y = day or (today - timedelta(days=1)).isoformat()
+    return (
+        f"[morning briefing for {today.isoformat()}] Prepare the owner's morning text. Delegate these three in "
+        f"PARALLEL with the task tool (one message, three task calls):\n"
+        f"1. analyst: 'Compare {y} with a normal day using usage_trend(day=\"{y}\"). Report the 3 biggest changes "
+        f"(item, used vs typical, % change, and days of stock left), exact numbers only.'\n"
+        f"2. clip-reviewer: 'Re-check the flagged camera grabs from {y} and {today.isoformat()} (flagged_grabs, then "
+        f"d1_look on each clip). For each grab give a suggested action, item and count with how sure you are.'\n"
+        f"3. purchasing: 'Plan orders for the next 3 days with demand_forecast(3) and reorder_plan. Return item, "
+        f"qty, cost and why (forecast vs par).'\n"
+        f"Then write all three results to /reports/briefing-{today.isoformat()}.md (write_file). Then send the owner "
+        f"ONE short text with send_text: line 1 = how yesterday went in one plain sentence with the single biggest "
+        f"change; line 2 = how many grabs need their OK and what the reviewer suggests (they can reply 'confirm "
+        f"grabs'); line 3 = what you're about to order and the total. Finally call place_orders ONCE with the "
+        f"purchasing plan's items (the owner approves by text). If nothing needs ordering, say so and skip "
+        f"place_orders.")
+
+
+def send_morning_briefing(chat_ids: list[str] | None = None) -> list[dict]:
+    """Every morning: three subagents in parallel (analyst, clip reviewer, purchasing) -> a report
+    file -> one text to the owner -> the reorder waits for their yes."""
+    from app.ledger import api as ledger
+    agent = get_agent()
+    if agent is None:
+        return []
+    task = briefing_task()
+    return [notify(agent, c, task) for c in (chat_ids or ledger.known_chats())]
+
+
 def send_reorder_plan(chat_ids: list[str] | None = None) -> list[dict]:
     from app.ledger import api as ledger
     agent = get_agent()
