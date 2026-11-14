@@ -20,3 +20,6 @@ hardware/snapshots/
 
 # owner sheet + authenticator QR (contains the TOTP secret): never commit
 /exports/
+
+# the one shop clip we publish on purpose (everything else stays local)
+!docs/media/shop-grab-sprite.mp4
