@@ -47,8 +47,23 @@ def _item_options(items: list[str], zone: str) -> tuple[str, ...]:
     return (*opts, NONE_ITEM)
 
 
+SCENES = {
+    "pizza": dict(
+        place="ingredient bin on a pizza make-line", camera="fixed kitchen camera", bin="bin",
+        thing="ingredient", holding="food, such as a piece or handful of an ingredient",
+        qty="'pinch': a few pieces or a small pinch. 'handful': about a full handful. "
+            "'whole_container': the whole bin or container was lifted out or emptied."),
+    "drinks": dict(
+        place="drinks fridge or shelf at a restaurant", camera="fixed camera", bin="shelf",
+        thing="drink", holding="a drink, such as a can or bottle",
+        qty="'pinch': exactly one can or bottle. 'handful': two or three cans or bottles. "
+            "'whole_container': a whole pack or case."),
+}
+
+
 def build_questions(pkg: GrabPackage, items: list[str]) -> tuple[dict, dict]:
     """Return the two requests as dicts {questions, state, images}."""
+    w = SCENES.get(settings.scene, SCENES["pizza"])
     zone = pkg.meta.zone
     during = _sample(pkg.during, MAX_DURING)
     n_during = len(during)
@@ -58,9 +73,9 @@ def build_questions(pkg: GrabPackage, items: list[str]) -> tuple[dict, dict]:
 
     bin_req = {
         "state": (
-            f"Two photos of the same ingredient bin on a pizza make-line, from a fixed kitchen camera. "
+            f"Two photos of the same {w['place']}, from a {w['camera']}. "
             f"The camera zone is labelled '{zone}'. "
-            f"Image 1 is BEFORE: taken just before a hand reached into the bin. "
+            f"Image 1 is BEFORE: taken just before a hand reached into the {w['bin']}. "
             f"Image 2 is AFTER: taken just after the hand left."
         ),
         "images": [pkg.before, pkg.after],
@@ -68,10 +83,10 @@ def build_questions(pkg: GrabPackage, items: list[str]) -> tuple[dict, dict]:
             D1Question(
                 id="bin_change", type="choice", options=("emptier", "fuller", "same"),
                 instructions=(
-                    "Compare the bin in image 2 (AFTER) with the bin in image 1 (BEFORE). "
-                    "Answer 'emptier' if image 2 shows less ingredient in the bin than image 1, "
-                    "'fuller' if image 2 shows more ingredient than image 1, "
-                    "or 'same' if the amount of ingredient looks unchanged."
+                    f"Compare the {w['bin']} in image 2 (AFTER) with the {w['bin']} in image 1 (BEFORE). "
+                    f"Answer 'emptier' if image 2 shows less {w['thing']} in the {w['bin']} than image 1, "
+                    f"'fuller' if image 2 shows more {w['thing']} than image 1, "
+                    f"or 'same' if the amount of {w['thing']} looks unchanged."
                 ),
             ),
         ],
@@ -79,44 +94,43 @@ def build_questions(pkg: GrabPackage, items: list[str]) -> tuple[dict, dict]:
 
     grab_req = {
         "state": (
-            f"Photos of one grab at an ingredient bin on a pizza make-line, from a fixed kitchen camera, "
+            f"Photos of one grab at a {w['place']}, from a {w['camera']}, "
             f"in time order. Image 1 is BEFORE the grab (no hand). {during_span.capitalize()} are DURING "
-            f"the grab (a hand is in or over the bin). Image {last} is AFTER the grab (hand gone). "
+            f"the grab (a hand is in or over the {w['bin']}). Image {last} is AFTER the grab (hand gone). "
             f"The camera zone is labelled '{zone}'; the label is a hint and may be wrong, so judge from "
-            f"the images. The shop's ingredients are: {item_list}."
+            f"the images. The shop's {w['thing']}s are: {item_list}."
         ),
         "images": [pkg.before, *during, pkg.after],
         "questions": [
             D1Question(
                 id="hand_food", type="noul",
                 instructions=(
-                    f"Look at the DURING images ({during_span}). Is a hand visibly holding food, "
-                    f"such as a piece or handful of an ingredient, in any of them?"
+                    f"Look at the DURING images ({during_span}). Is a hand visibly holding "
+                    f"{w['holding']}, in any of them?"
                 ),
             ),
             D1Question(
                 id="item", type="choice", options=_item_options(items, zone),
                 instructions=(
-                    f"Which ingredient did the hand handle during the grab ({during_span})? "
+                    f"Which {w['thing']} did the hand handle during the grab ({during_span})? "
                     f"The camera zone label '{zone}' is only context; answer from what the images show. "
-                    f"Answer 'none' if no ingredient was handled or none of the options fits."
+                    f"Answer 'none' if no {w['thing']} was handled or none of the options fits."
                 ),
             ),
             D1Question(
                 id="action", type="choice", options=("took", "put_back", "touched"),
                 instructions=(
-                    f"What did the hand do to the bin, comparing image 1 (BEFORE), the DURING images "
-                    f"({during_span}) and image {last} (AFTER)? 'took': removed ingredient from the bin. "
-                    f"'put_back': returned ingredient to the bin. 'touched': reached in or touched the "
-                    f"ingredient without removing or adding any."
+                    f"What did the hand do to the {w['bin']}, comparing image 1 (BEFORE), the DURING images "
+                    f"({during_span}) and image {last} (AFTER)? 'took': removed {w['thing']} from the {w['bin']}. "
+                    f"'put_back': returned {w['thing']} to the {w['bin']}. 'touched': reached in or touched the "
+                    f"{w['thing']} without removing or adding any."
                 ),
             ),
             D1Question(
                 id="qty", type="choice", options=("pinch", "handful", "whole_container"),
                 instructions=(
-                    f"How much ingredient did the hand move during the grab ({during_span})? "
-                    f"'pinch': a few pieces or a small pinch. 'handful': about a full handful. "
-                    f"'whole_container': the whole bin or container was lifted out or emptied."
+                    f"How much {w['thing']} did the hand move during the grab ({during_span})? "
+                    f"{w['qty']}"
                 ),
             ),
         ],

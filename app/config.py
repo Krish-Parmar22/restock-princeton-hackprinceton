@@ -28,6 +28,8 @@ class Settings:
     autolog_min_prob: float = float(os.getenv("AUTOLOG_MIN_PROB", "0.80"))
     guard_send_min: float = float(os.getenv("GUARD_SEND_MIN", "0.85"))
     guard_soften_min: float = float(os.getenv("GUARD_SOFTEN_MIN", "0.65"))
+    # What the camera watches: "pizza" (ingredient bins on a make-line) or "drinks" (a drinks fridge/shelf).
+    scene: str = os.getenv("SCENE", "pizza")
 
 
 settings = Settings()
