@@ -73,6 +73,12 @@ class PiPipeline:
                 continue
             if z.name in ended:            # trigger says the grab ended (settled)
                 g.t_end, g.after = ts, frame.copy()
+                if ended[z.name].get("capped"):   # hit max_duration: ship it now, don't merge into it
+                    folder = self._finalize(z.name, g)
+                    del self.grabs[z.name]
+                    if folder:
+                        folders.append(folder)
+                    continue
             elif not z.active and g.t_end is None and g.merged:
                 # a merged continuation died down without its own "ended" event (it never re-met
                 # min_duration): it's still part of the grab, so end it here instead of losing it

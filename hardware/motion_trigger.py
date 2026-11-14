@@ -40,6 +40,7 @@ class MotionTrigger:
         active_learning_rate: float = 0.0005,  # MOG2 learning while a grab is active (auto when idle)
         static_timeout: float = 6.0, # end a grab after this long with no movement, even if the
                                      # zone still differs from the background (e.g. a resting hand)
+        max_duration: float = 60.0,  # never let one grab run longer than this (constant motion)
     ):
         self.min_pixels = min_pixels
         self.min_contour_area = min_contour_area
@@ -49,6 +50,7 @@ class MotionTrigger:
         self.min_diff_pixels = min_diff_pixels
         self._grays = __import__("collections").deque(maxlen=diff_lag + 1)
         self.static_timeout = static_timeout
+        self.max_duration = max_duration
         self.active_learning_rate = active_learning_rate
 
         # background subtractor — adapts to gradual lighting changes
@@ -128,6 +130,16 @@ class MotionTrigger:
                 has_motion = moving                                        # continue while it moves
             else:
                 has_motion = motion_ratio > self.min_pixels and moving     # start: new + moving
+
+            if zone.active and timestamp - zone.motion_start >= self.max_duration:
+                # Motion that never stops (a busy line, a person standing in the box): cut the grab so
+                # packages still flow. If it keeps moving, the next grab starts fresh.
+                if zone.triggered:
+                    events.append({"zone": zone.name, "t_start": zone.motion_start, "t_end": timestamp,
+                                   "capped": True})
+                zone.active = False
+                zone.triggered = False
+                continue
 
             if has_motion:
                 zone.last_motion = timestamp

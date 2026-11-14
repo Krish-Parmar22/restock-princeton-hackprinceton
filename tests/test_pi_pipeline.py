@@ -155,3 +155,21 @@ def test_lights_brightening_documented_behavior(tmp_path):
         z = json.loads((Path(f) / "meta.json").read_text())["zone"]
         per_zone[z] = per_zone.get(z, 0) + 1
     assert all(n <= 1 for n in per_zone.values()), per_zone
+
+
+def test_constant_motion_is_capped_and_still_ships(tmp_path):
+    """Someone keeps moving in the box for 150 s (busy line): grabs must still be cut, never stuck."""
+    rng = np.random.default_rng(1)
+    v = Video().hold(CLEAN, 6)
+    for d in rng.uniform(0.3, 0.95, int(150 * FPS)):
+        v.frames.append((v.t, bgr(with_hand(_SCENE, "pepperoni", float(d)))))
+        v.t += 1 / FPS
+    zs = [{"name": "pepperoni", "points": ZONES["pepperoni"]}]
+    pipe = PiPipeline(zs, CLEAN.shape, GrabCutter(output_dir=str(tmp_path / "out"), source="webcam"), camera_id="t")
+    out = []
+    for ts, f in v.frames:
+        out += pipe.process(f, ts)
+    assert len(out) >= 2, f"constant motion must still produce packages before shutdown: {out}"
+    for f in out:
+        m = json.loads((Path(f) / "meta.json").read_text())
+        assert m["t_end"] - m["t_start"] <= 61

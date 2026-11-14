@@ -125,6 +125,7 @@ def main():
     trigger = MotionTrigger(zones, test_frame.shape) if zones else None
     pipe = PiPipeline(zones, test_frame.shape, cutter, camera_id=args.camera_id, trigger=trigger) if zones else None
 
+    zone_state: dict[str, bool] = {}
     frame_interval = 1.0 / args.fps
     grab_count = 0
     frame_num = 0
@@ -153,7 +154,14 @@ def main():
 
         # motion detection -> grab packages (before snapshotted at motion start)
         if pipe:
-            for folder in pipe.process(frame, now):
+            folders = pipe.process(frame, now)
+            for z in trigger.zones:   # live status, so a stuck or silent zone is obvious
+                was = zone_state.get(z.name, False)
+                if z.active != was:
+                    print(f"[motion] {z.name}: {'moving' if z.active else 'still'}"
+                          + ("" if z.active else f" after {now - z.motion_start:.1f}s ({'grab' if z.triggered or folders else 'too short / waiting'})"))
+                    zone_state[z.name] = z.active
+            for folder in folders:
                 grab_count += 1
                 if worker:
                     worker.nudge()
