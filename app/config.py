@@ -1,0 +1,29 @@
+"""Settings from environment (.env). Every module reads config from here."""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(ROOT / ".env")
+
+
+@dataclass(frozen=True)
+class Settings:
+    database_url: str = os.getenv("DATABASE_URL", "postgresql://localhost:5432/pizza")
+    grabs_dir: Path = Path(os.getenv("GRABS_DIR", str(ROOT / "grabs"))).resolve()
+    d1_backend: str = os.getenv("D1_BACKEND", "fake")  # 'liquid' | 'fake'
+    liquid_api_key: str = os.getenv("LIQUID_API_KEY", "")
+    agent_model: str = os.getenv("AGENT_MODEL", "")
+    fallback_model: str = os.getenv("FALLBACK_MODEL", "anthropic:claude-sonnet-5-5")
+    bridge_url: str = os.getenv("BRIDGE_URL", "http://localhost:8787")
+    # d1 decision thresholds (see docs/architecture.md)
+    autolog_min_prob: float = float(os.getenv("AUTOLOG_MIN_PROB", "0.80"))
+    guard_send_min: float = float(os.getenv("GUARD_SEND_MIN", "0.85"))
+    guard_soften_min: float = float(os.getenv("GUARD_SOFTEN_MIN", "0.50"))
+
+
+settings = Settings()

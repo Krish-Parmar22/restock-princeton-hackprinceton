@@ -1,0 +1,129 @@
+"""Shared data contracts. Single source in code for:
+
+1. The grab package (hardware -> software). Spec: docs/architecture.md, "The handoff".
+2. The API at :8000 that Arnav's bridge and dashboard call. Spec: docs/arnav-shah.md.
+
+Change these only after telling the other side.
+"""
+from __future__ import annotations
+
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+Action = Literal["took", "put_back", "touched"]
+QtyLabel = Literal["pinch", "handful", "whole_container"]
+GrabStatus = Literal["logged", "flagged", "confirmed"]
+
+
+# ---------- 1. Grab package ----------
+
+class GrabMeta(BaseModel):
+    grab_id: str
+    camera_id: str = "cam0"
+    zone: str
+    t_start: datetime
+    t_end: datetime
+    frame_times: list[datetime] = Field(default_factory=list)
+    source: Literal["webcam", "iphone", "fake"] = "webcam"
+
+
+class GrabPackage(BaseModel):
+    meta: GrabMeta
+    before: Path
+    during: list[Path]
+    after: Path
+
+    @classmethod
+    def load(cls, folder: Path) -> "GrabPackage":
+        """Read a grab package folder. Raises ValueError if it is incomplete."""
+        folder = Path(folder)
+        meta_path = folder / "meta.json"
+        before, after = folder / "before.jpg", folder / "after.jpg"
+        during = sorted(folder.glob("during_*.jpg"))
+        missing = [p.name for p in (meta_path, before, after) if not p.exists()]
+        if missing or not during:
+            raise ValueError(f"incomplete grab package {folder}: missing {missing or ['during_*.jpg']}")
+        meta = GrabMeta.model_validate(json.loads(meta_path.read_text()))
+        return cls(meta=meta, before=before.resolve(), during=[p.resolve() for p in during], after=after.resolve())
+
+    def frames_json(self) -> dict:
+        return {"before": str(self.before), "during": [str(p) for p in self.during], "after": str(self.after)}
+
+
+# ---------- 2. API :8000 ----------
+
+class InboundMessage(BaseModel):
+    chat_id: str
+    sender: str
+    text: str
+    ts: datetime
+    images: list[str] = Field(default_factory=list)
+
+
+class InboundReply(BaseModel):
+    reply: str | None
+    images: list[str] = Field(default_factory=list)
+
+
+class InventoryRow(BaseModel):
+    item: str
+    unit: str
+    on_hand: float
+    par: float
+    used_today: float
+    unit_cost: float
+    below_par: bool
+
+
+class VarianceRow(BaseModel):
+    item: str
+    theoretical: float
+    actual: float
+    unit: str
+    variance_qty: float
+    variance_usd: float
+    grab_ids: list[str]
+
+
+class GrabFrames(BaseModel):
+    before: str
+    during: list[str]
+    after: str
+
+
+class GrabRow(BaseModel):
+    grab_id: str
+    zone: str
+    t_start: datetime
+    t_end: datetime
+    action: Action | None
+    item: str | None
+    qty_label: QtyLabel | None
+    confidence: float | None
+    status: GrabStatus
+    frames: GrabFrames
+
+
+class GrabConfirm(BaseModel):
+    action: Action
+    item: str
+    qty_label: QtyLabel
+
+
+class MessageRow(BaseModel):
+    ts: datetime
+    chat_id: str | None
+    text: str
+    d1_score: float | None
+    decision: Literal["sent", "softened", "blocked"]
+
+
+class SendRequest(BaseModel):
+    """What we POST to Arnav's bridge at BRIDGE_URL/send."""
+    chat_id: str
+    text: str
+    images: list[str] = Field(default_factory=list)
