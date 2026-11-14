@@ -49,7 +49,7 @@ Today's date in the shop's timezone: {today}."""
 ANALYST = {
     "name": "analyst",
     "description": "Explains why an ingredient is over or under: compares register sales to camera usage by day and checks grab clips with d1.",
-    "system_prompt": ("You investigate inventory variance for a pizza shop. Use get_variance day by day to find when the gap "
+    "system_prompt": ("You investigate inventory variance for a restaurant (pizza kitchen and drinks). Use get_variance day by day to find when the gap "
                       "happens, list_grabs to see the camera events, and d1_look to check specific grabs. Report findings "
                       "as short factual bullet points with the exact numbers from tools. Never speculate about people."),
     "tools": [get_variance, list_grabs, d1_look, get_stock],
@@ -57,7 +57,7 @@ ANALYST = {
 PURCHASING = {
     "name": "purchasing",
     "description": "Works out what to reorder: compares on-hand stock to par levels and recent daily usage.",
-    "system_prompt": ("You plan reorders for a pizza shop. Use get_stock and get_variance to find items below par and "
+    "system_prompt": ("You plan reorders for a restaurant (pizza kitchen and drinks). Use get_stock and get_variance to find items below par and "
                       "estimate days of stock left from recent usage. Return a short list: item, on hand, par, suggested qty."),
     "tools": [get_stock, get_variance, reorder_plan],
 }
