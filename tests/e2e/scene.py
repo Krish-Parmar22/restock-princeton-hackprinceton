@@ -56,17 +56,32 @@ def with_hand(base: Image.Image, zone: str, depth: float) -> Image.Image:
     return out
 
 
-def remove_slices(base: Image.Image, fraction: float = 0.55) -> Image.Image:
-    """Cover the right `fraction` of the pepperoni stack with plain board texture."""
-    out = base.copy()
+def remove_slices(base: Image.Image, fraction: float = 0.75) -> Image.Image:
+    """Make slices really disappear: find the red/pink salami pixels in the right `fraction` of the
+    pepperoni zone and replace them with bare cutting-board texture from the same photo, feathered
+    at the edges, so the bin looks genuinely emptier (not a pasted-on patch)."""
+    from PIL import ImageFilter as F
+
+    img = np.asarray(base).astype(float)
     (x0, y0), (x1, y1) = ZONES["pepperoni"][0], ZONES["pepperoni"][2]
     cut_x = int(x1 - (x1 - x0) * fraction)
-    board = base.crop((40, 650, 460, 700))  # empty cutting board below the food
-    patch = Image.new("RGB", (x1 - cut_x + 10, y1 - y0 + 10))
-    for yy in range(0, patch.height, board.height):
-        patch.paste(board.crop((0, 0, patch.width, board.height)), (0, yy))
-    out.paste(patch, (cut_x - 5, y0 - 5))
-    return out
+    r, g, b = img[..., 0], img[..., 1], img[..., 2]
+    salami = (r > 100) & ((r - g) > 30) & ((r - b) > 15)
+    region = np.zeros(salami.shape, bool)
+    region[y0 - 15:y1 + 15, cut_x:x1 + 15] = True
+    m = Image.fromarray(((salami & region) * 255).astype("uint8"))
+    m = m.filter(F.MaxFilter(9)).filter(F.MaxFilter(9)).filter(F.GaussianBlur(4))
+    alpha = np.asarray(m).astype(float)[..., None] / 255.0
+    # bare board, tiled from a clean strip of the same board (below the food)
+    strip = np.asarray(base.crop((20, 600, 460, 700))).astype(float)
+    board = np.zeros_like(img)
+    for yy in range(0, img.shape[0], strip.shape[0]):
+        for xx in range(0, img.shape[1], strip.shape[1]):
+            h = min(strip.shape[0], img.shape[0] - yy)
+            w = min(strip.shape[1], img.shape[1] - xx)
+            board[yy:yy + h, xx:xx + w] = strip[:h, :w]
+    out = img * (1 - alpha) + board * alpha
+    return Image.fromarray(out.clip(0, 255).astype("uint8"))
 
 
 def write_package(root: Path, grab_id: str, zone: str, before: Image.Image, during: list[Image.Image],

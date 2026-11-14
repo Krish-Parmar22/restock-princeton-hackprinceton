@@ -74,7 +74,7 @@ def test_bin_change_drives_action_and_conflict_flags(pkg):
 def test_bin_change_agrees_put_back_logged(pkg):
     d1 = FakeD1(p=0.95, overrides={"bin_change": ("fuller", 0.9), "action": ("put_back", 0.85)})
     row, _ = check_grab(pkg, ITEMS, d1)
-    assert (row["action"], row["status"], row["confidence"]) == ("put_back", "logged", 0.85)
+    assert (row["action"], row["status"], row["confidence"]) == ("put_back", "logged", 0.9)  # min(bin, item, qty)
 
 
 def test_touched_has_no_qty_and_ignores_hand_food(pkg):
@@ -84,12 +84,26 @@ def test_touched_has_no_qty_and_ignores_hand_food(pkg):
     assert (row["action"], row["qty_label"], row["status"]) == ("touched", None, "logged")
 
 
-def test_low_confidence_is_flagged(pkg):
+def test_low_confidence_bin_change_is_flagged(pkg):
     low = settings.autolog_min_prob - 0.05
-    row, _ = check_grab(pkg, ITEMS, FakeD1(p=0.95, overrides={"qty": ("handful", low)}))
+    row, _ = check_grab(pkg, ITEMS, FakeD1(p=0.95, overrides={"bin_change": ("emptier", low)}))
+    assert row["status"] == "flagged" and row["confidence"] == pytest.approx(low)
+
+
+def test_low_confidence_item_is_flagged(pkg):
+    row, _ = check_grab(pkg, ITEMS, FakeD1(p=0.95, overrides={"item": ("pepperoni", 0.6)}))
     assert row["status"] == "flagged"
-    assert row["confidence"] == pytest.approx(low)
-    assert row["qty_label"] == "handful"
+
+
+def test_fuzzy_qty_and_agreeing_action_still_log(pkg):
+    """Real d1 (Nov 13): bin emptier 1.00, item 1.00, action took 0.78, qty handful 0.70 -> log it."""
+    row, _ = check_grab(pkg, ITEMS, FakeD1(p=0.99, overrides={"action": ("took", 0.78), "qty": ("handful", 0.70)}))
+    assert row["status"] == "logged" and row["qty_label"] == "handful" and row["confidence"] == pytest.approx(0.70)
+
+
+def test_very_low_qty_is_flagged(pkg):
+    row, _ = check_grab(pkg, ITEMS, FakeD1(p=0.95, overrides={"qty": ("handful", 0.4)}))
+    assert row["status"] == "flagged"
 
 
 def test_item_none_is_flagged(pkg):

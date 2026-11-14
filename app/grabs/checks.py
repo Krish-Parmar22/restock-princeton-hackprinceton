@@ -149,10 +149,17 @@ def decide(answers: dict[str, D1Answer], min_prob: float, zone: str | None = Non
         # hand_food is recorded for context but is NOT a veto: the before/after bin change is the
         # primary signal, and a utensil or an occluded hand shouldn't flag a clear bin change.
 
-    confidence = round(min(a.confidence for a in deciding.values()), 4)
-    low = [f"{qid}={a.confidence:.2f}" for qid, a in deciding.items() if a.confidence < min_prob]
+    # Thresholds tuned on real d1 runs (Nov 13, docs/struggles.md): the before/after bin change and
+    # the ingredient are the facts that move inventory, so they must be confident. The action
+    # answer only has to AGREE with the bin change (checked above), and the amount is inherently
+    # fuzzy, so it needs QTY_MIN_PROB, not min_prob.
+    need = {"bin_change": min_prob, "item": min_prob}
+    if "qty" in deciding:
+        need["qty"] = QTY_MIN_PROB
+    confidence = round(min(deciding[q].confidence for q in need), 4)
+    low = [f"{q}={deciding[q].confidence:.2f}<{t:.2f}" for q, t in need.items() if deciding[q].confidence < t]
     if low:
-        reasons.append(f"below {min_prob:.2f}: {', '.join(low)}")
+        reasons.append(f"low confidence: {', '.join(low)}")
 
     return {
         "action": action, "item": item, "qty_label": qty_label, "confidence": confidence,
@@ -160,6 +167,7 @@ def decide(answers: dict[str, D1Answer], min_prob: float, zone: str | None = Non
     }
 
 
+QTY_MIN_PROB = 0.5
 CROP_MARGIN = 0.35  # extra context around the bin on each side (fraction of the bin's size)
 
 
