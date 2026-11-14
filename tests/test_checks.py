@@ -422,3 +422,11 @@ def test_d1_gets_frames_cropped_to_the_zone(tmp_path):
     assert Image.open(c.after).size == (510, 442)
     no_poly = p.model_copy(update={"meta": p.meta.model_copy(update={"zone_polygon": None})})
     assert crop_to_zone(no_poly, tmp_path) is no_poly
+
+
+def test_watcher_refuses_fake_d1_by_default(monkeypatch, tmp_path):
+    import app.d1.base as base
+    from app.grabs.watcher import build_watcher
+    monkeypatch.setattr(base, "get_client", lambda: FakeD1())
+    with pytest.raises(RuntimeError, match="made-up grabs"):
+        build_watcher(grabs_dir=tmp_path)

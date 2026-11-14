@@ -75,4 +75,6 @@ def get_client() -> D1Client:
         from app.d1.liquid import LiquidD1  # implemented by the d1 workstream
 
         return LiquidD1(api_key=settings.liquid_api_key)
-    return FakeD1()
+    if settings.d1_backend == "fake":
+        return FakeD1()
+    raise ValueError(f"unknown D1_BACKEND {settings.d1_backend!r}: use openrouter, liquid or fake")

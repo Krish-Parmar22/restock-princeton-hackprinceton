@@ -26,8 +26,9 @@ from app.contracts import GrabMeta
 router = APIRouter()
 
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
-FRAME = re.compile(r"^(before|after|during_0[1-6])\.(jpg|jpeg|png)$")
+FRAME = re.compile(r"^(before|after|during_0[1-6])\.(jpg|jpeg)$")  # JPEG only (what the watcher reads)
 MAX_FILE_BYTES = 5_000_000
+MAX_REQUEST_BYTES = 8 * MAX_FILE_BYTES
 
 
 def _known_items() -> set[str] | None:
@@ -41,7 +42,11 @@ def _known_items() -> set[str] | None:
 
 @router.post("/api/grabs/upload")
 async def upload(request: Request):
-    form = await request.form()
+    if settings.upload_token and request.headers.get("x-upload-token") != settings.upload_token:
+        raise HTTPException(401, "missing or wrong X-Upload-Token")
+    if int(request.headers.get("content-length") or 0) > MAX_REQUEST_BYTES:
+        raise HTTPException(413, f"package over {MAX_REQUEST_BYTES} bytes")
+    form = await request.form(max_files=8, max_fields=4)
     raw = form.get("meta")
     if not isinstance(raw, str):
         raise HTTPException(400, "missing 'meta' field (meta.json text)")
@@ -63,7 +68,7 @@ async def upload(request: Request):
             raise HTTPException(400, f"field {key!r} should be a file")
         name = (key or value.filename or "").lower()
         if not FRAME.match(name):
-            raise HTTPException(400, f"unexpected file {name!r}: want before.jpg, during_01..06.jpg, after.jpg")
+            raise HTTPException(400, f"unexpected file {name!r}: want before.jpg, during_01..06.jpg, after.jpg (JPEG only)")
         data = await value.read()
         if len(data) > MAX_FILE_BYTES:
             raise HTTPException(400, f"{name} is over {MAX_FILE_BYTES} bytes")

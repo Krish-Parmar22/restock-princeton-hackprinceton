@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.config import settings  # noqa: E402
-from app.grabs.watcher import GrabWatcher  # noqa: E402
+from app.grabs.watcher import build_watcher  # noqa: E402
 
 
 def main() -> int:
@@ -25,19 +25,12 @@ def main() -> int:
     ap.add_argument("--once", action="store_true", help="process the current folder and exit")
     ap.add_argument("--dir", type=Path, default=settings.grabs_dir)
     ap.add_argument("--interval", type=float, default=2.0)
+    ap.add_argument("--allow-fake", action="store_true", help="allow D1_BACKEND=fake (dev only)")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    hand_check = None
-    if settings.yolo_enabled:
-        from app.grabs import yolo
-        if yolo.available():
-            hand_check = yolo.check_hand
-            logging.info("YOLO-World hand double-check: on")
-        else:
-            logging.warning("YOLO_ENABLED but ultralytics isn't installed: d1 only")
-    w = GrabWatcher(a.dir, settle_s=1.0, hand_check=hand_check)  # settle in --once too: never read a half-copied package
+    w = build_watcher(allow_fake=a.allow_fake, grabs_dir=a.dir)  # settle in --once too: never read a half-copied package
     logging.info("d1 backend: %s, autolog threshold %.2f", settings.d1_backend, settings.autolog_min_prob)
     if a.once:
         done = w.poll_once()

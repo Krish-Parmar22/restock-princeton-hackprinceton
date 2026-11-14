@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 Action = Literal["took", "put_back", "touched"]
 QtyLabel = Literal["pinch", "handful", "whole_container"]
@@ -31,6 +31,21 @@ class GrabMeta(BaseModel):
     source: Literal["webcam", "iphone", "fake"] = "webcam"
     # The bin's box on the camera frame: [[x, y], ...] in pixels. Optional; used to crop/highlight.
     zone_polygon: list[list[float]] | None = None
+
+    @field_validator("t_start", "t_end")
+    @classmethod
+    def _aware(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("timestamps need a timezone offset, e.g. 2026-11-14T12:14:03-05:00")
+        return v
+
+    @model_validator(mode="after")
+    def _ordered(self):
+        if self.t_end < self.t_start:
+            raise ValueError("t_end is before t_start")
+        if self.zone_polygon is not None and (len(self.zone_polygon) < 3 or any(len(p) != 2 for p in self.zone_polygon)):
+            raise ValueError("zone_polygon needs at least 3 [x, y] points")
+        return self
 
 
 class GrabPackage(BaseModel):

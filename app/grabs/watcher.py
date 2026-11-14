@@ -185,5 +185,30 @@ class GrabWatcher:
     def run_forever(self, interval: float = 2.0) -> None:
         log.info("watching %s every %.1fs", self.dir, interval)
         while True:
-            self.poll_once()
+            try:
+                self.poll_once()
+            except Exception:  # never let one bad poll kill the watcher thread
+                log.exception("poll failed; continuing")
             time.sleep(interval)
+
+
+def build_watcher(allow_fake: bool = False, grabs_dir: Path | None = None) -> "GrabWatcher":
+    """The production watcher: real d1 (refuses the fake one unless allow_fake), YOLO-World hand
+    check preloaded at startup (not on the first grab) when YOLO_ENABLED."""
+    from app.d1.base import FakeD1, get_client
+
+    client = get_client()
+    if isinstance(client, FakeD1) and not allow_fake:
+        raise RuntimeError("D1_BACKEND=fake would log made-up grabs into the real ledger. "
+                           "Set D1_BACKEND=openrouter (or pass allow_fake for dev).")
+    hand_check = None
+    if settings.yolo_enabled:
+        from app.grabs import yolo
+
+        if yolo.available():
+            yolo._model()  # load weights now: the first real grab shouldn't wait ~25 s
+            hand_check = yolo.check_hand
+            log.info("YOLO-World hand double-check: on (weights loaded)")
+        else:
+            log.warning("YOLO_ENABLED but ultralytics isn't installed: d1 only")
+    return GrabWatcher(grabs_dir, client=client, settle_s=1.0, hand_check=hand_check)
