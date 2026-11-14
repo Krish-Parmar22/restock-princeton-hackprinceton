@@ -13,3 +13,7 @@ data/real/
 models/
 tests/e2e/.cache/
 weights/
+hardware/grabs/
+hardware/recordings/
+hardware/snapshots/
+*.mp4

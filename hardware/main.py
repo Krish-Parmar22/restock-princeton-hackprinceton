@@ -25,6 +25,7 @@ from frame_buffer import FrameBuffer
 from grab_cutter import GrabCutter
 from motion_trigger import MotionTrigger
 from recorder import Recorder
+import uploader
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ZONES_PATH = os.path.join(HERE, "zones.json")
@@ -70,7 +71,12 @@ def main():
     parser.add_argument("--no-record", action="store_true", help="Skip continuous recording")
     parser.add_argument("--show", action="store_true", help="Show live preview window")
     parser.add_argument("--fps", type=float, default=15.0, help="Target capture FPS")
+    parser.add_argument("--api-url", default="", help="Backend API URL for uploads (empty=disabled)")
     args = parser.parse_args()
+
+    if args.api_url:
+        uploader.BASE_URL = args.api_url
+        print(f"[main] uploads enabled → {args.api_url}")
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -141,6 +147,8 @@ def main():
                 )
                 if folder:
                     grab_count += 1
+                    if args.api_url:
+                        uploader.upload_grab(folder)
 
         # live preview
         if args.show:
