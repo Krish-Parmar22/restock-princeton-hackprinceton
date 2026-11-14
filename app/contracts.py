@@ -138,7 +138,7 @@ class MessageRow(BaseModel):
     chat_id: str | None
     text: str
     d1_score: float | None
-    decision: Literal["sent", "softened", "blocked"]
+    decision: Literal["sent", "softened", "blocked", "received"]   # received = the owner's own text
 
 
 class SendRequest(BaseModel):

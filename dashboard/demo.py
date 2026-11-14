@@ -130,6 +130,9 @@ class DemoApi:
     def send_plan(self) -> list[dict]:
         return []
 
+    def send_briefing(self) -> dict:
+        return {"started": False}
+
     def confirm(self, grab_id: str, action: str, item: str, qty_label: str) -> dict:
         self._confirmed[grab_id] = {"action": action, "item": item, "qty_label": qty_label, "confidence": 1.0}
         day = date.fromisoformat(grab_id[:10])

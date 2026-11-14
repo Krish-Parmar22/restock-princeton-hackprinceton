@@ -56,6 +56,15 @@ class Api:
     def reorder_plan(self) -> dict:
         return self._get("/api/reorder-plan")
 
+    def send_briefing(self) -> dict:
+        try:
+            r = self.http.post("/api/briefing/send", timeout=20)
+        except httpx.HTTPError as e:
+            raise ApiError(f"can't reach the agent API: {e}") from e
+        if r.status_code != 200:
+            raise ApiError(f"send briefing -> {r.status_code}: {r.text[:200]}")
+        return r.json()
+
     def send_plan(self) -> list[dict]:
         """Ask the agent to text the owner today's reorder plan (they approve by replying yes)."""
         try:

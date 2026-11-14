@@ -69,8 +69,13 @@ def send_plan(chat_id: str | None = None):
 @router.post("/api/briefing/send")
 def send_briefing(chat_id: str | None = None):
     """The morning briefing now (demo button; the daily timer calls the same thing)."""
+    import threading
+
     from app.agent.runtime import send_morning_briefing
-    return send_morning_briefing([chat_id] if chat_id else None)
+    # takes ~1-2 min (three subagents + d1 clip checks): run it in the background, texts arrive on the phone
+    threading.Thread(target=send_morning_briefing, args=([chat_id] if chat_id else None,), daemon=True,
+                     name="briefing").start()
+    return {"started": True}
 
 
 @router.get("/api/messages", response_model=list[MessageRow])

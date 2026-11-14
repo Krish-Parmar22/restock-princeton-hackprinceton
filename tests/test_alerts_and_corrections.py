@@ -28,7 +28,7 @@ def db():
                      (Jsonb({"handful": 0.25, "pinch": 0.05, "whole_container": 5}),))
         conn.execute("INSERT INTO counts (ts, item_id, qty) VALUES (%s, 1, 8)", (datetime.now(TZ) - timedelta(hours=1),))
     yield
-    impl.use_database(None)
+    impl.use_database("postgresql://localhost:5432/pizza_test_default")   # never back to live
 
 
 def test_below_par_alerts_known_chats_once(db):

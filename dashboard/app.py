@@ -23,7 +23,7 @@ from excel import workbook_bytes
 ACTIONS = ["took", "put_back", "touched"]
 QTYS = ["1", "2", "3", "pinch", "handful", "whole_container"]   # exact counts for cans; amounts for bulk food
 
-st.set_page_config(page_title="Inventory", page_icon="🍕", layout="wide")
+st.set_page_config(page_title="Inventory", page_icon="🍕", layout="wide", initial_sidebar_state="collapsed")
 st.markdown(
     """<style>
     .card {border-radius:12px;padding:14px 16px;border:1px solid rgba(128,128,128,.25);background:rgba(128,128,128,.06)}
@@ -117,25 +117,12 @@ if VIEW_KEY and not st.session_state.get("viewer_ok"):
         st.error("Wrong password.")
     st.stop()
 
-# ---------- sidebar ----------
+# ---------- setup (no sidebar: the page password is the only gate) ----------
 a = api()
 today = date.today()
-with st.sidebar:
-    st.header("🍕 Inventory")
-    if a.demo:
-        st.warning("Demo data: the agent API isn't reachable. Start it with `uv run uvicorn app.api.server:app --port 8000`.")
-    else:
-        st.success("Live: connected to the agent API")
-    rng = st.date_input("Variance dates", (today - timedelta(days=6), today), max_value=today)
-    start, end = (rng if isinstance(rng, tuple) and len(rng) == 2 else (rng[0], rng[0]) if isinstance(rng, tuple) else (rng, rng))
-    day = st.date_input("Camera day (flagged grabs)", today, max_value=today)
-    if st.button("↻ Refresh"):
-        _load.clear()
-    # Public link (Tailscale Funnel): anyone can look, only the owner can change the ledger.
-    owner_key = os.getenv("DASHBOARD_OWNER_KEY", "")
-    can_edit = not owner_key or hmac.compare_digest(st.text_input("Owner key (to confirm grabs)", type="password"), owner_key)
-    if owner_key and not can_edit:
-        st.caption("View only. Enter the owner key to confirm grabs.")
+day = today
+start, end = today - timedelta(days=6), today
+can_edit = True
 
 try:
     inventory = load("inventory")
@@ -146,7 +133,9 @@ except ApiError as e:
 # ---------- header + Excel ----------
 h1, h2 = st.columns([3, 1])
 h1.title("Today at the shop")
-h1.caption(today.strftime("%A, %B %-d"))
+h1.caption(today.strftime("%A, %B %-d") + (" · ⚠ demo data (agent API offline)" if a.demo else " · 🟢 live"))
+if h2.button("↻ Refresh", width="stretch"):
+    _load.clear()
 try:
     try:
         orders = load("orders", 50)
@@ -190,8 +179,15 @@ if plan["items"]:
                  hide_index=True, width="stretch", column_config={"Cost": st.column_config.NumberColumn(format="$%.2f")})
 else:
     p1.caption("Everything is at or above par. Nothing to order.")
-if p2.button("📱 Text me this plan", type="primary", disabled=not (can_edit and plan["items"]),
-             help="The agent texts the plan; reply yes on your phone to order."):
+if p2.button("📱 Text me the morning debrief", type="primary", width="stretch",
+             help="How yesterday went, grabs to confirm, and today's order: one text, approve with yes."):
+    try:
+        a.send_briefing()
+        st.toast("Debrief on its way (about a minute). Reply yes on your phone to order.")
+    except ApiError as e:
+        st.error(str(e))
+if p2.button("📱 Text me this plan", width="stretch", disabled=not plan["items"],
+             help="Just the reorder plan; reply yes on your phone to order."):
     try:
         out = a.send_plan()
         st.toast("Sent to your phone. Reply yes there to order." if out else "No owner phone has texted the line yet.")
@@ -219,23 +215,36 @@ st.subheader(f"Needs your OK ({len(flagged)})")
 if not flagged:
     st.caption(f"Nothing to check for {day:%b %-d}. The camera was sure about every grab.")
 items = sorted({r["item"] for r in inventory})
+def _confirm(g, action, item, qty, msg):
+    try:
+        a.confirm(g["grab_id"], action, item, qty)
+        _load.clear()
+        st.toast(msg)
+        st.rerun()
+    except ApiError as e:
+        st.error(str(e))
+
+
 for g in flagged:
-    with st.expander(grab_caption(g), expanded=len(flagged) <= 2):
+    with st.expander(grab_caption(g), expanded=len(flagged) <= 3):
         show_frames(g, f"flag-{g['grab_id']}")
-        with st.form(f"confirm-{g['grab_id']}"):
-            c1, c2, c3 = st.columns(3)
-            action = c1.selectbox("What happened", ACTIONS, index=ACTIONS.index(g["action"]) if g.get("action") in ACTIONS else 0, format_func=label)
-            item_opts = sorted(set(items) | {g.get("item") or g["zone"]})
-            item = c2.selectbox("Item", item_opts, index=item_opts.index(g.get("item") or g["zone"]), format_func=label)
-            qty = c3.selectbox("How much", QTYS, index=QTYS.index(g["qty_label"]) if g.get("qty_label") in QTYS else 1, format_func=label)
-            if st.form_submit_button("✓ Confirm", type="primary", disabled=not can_edit) and can_edit:
-                try:
-                    a.confirm(g["grab_id"], action, item, qty)
-                    _load.clear()
-                    st.toast(f"Confirmed: {label(action)} {label(qty)} of {label(item)}")
-                    st.rerun()
-                except ApiError as e:
-                    st.error(str(e))
+        saw = g.get("action") in ACTIONS and g.get("item") and g.get("qty_label") in QTYS
+        b1, b2, _ = st.columns([1, 1, 2])
+        if b1.button("✓ Right", key=f"ok-{g['grab_id']}", type="primary", disabled=not saw,
+                     help="The camera got it right: count it as it says." if saw else "The camera wasn't sure what it was: use Fix it."):
+            _confirm(g, g["action"], g["item"], g["qty_label"], f"Counted: {label(g['action'])} {label(g['qty_label'])} {label(g['item'])}")
+        if b2.button("✗ Nothing taken", key=f"no-{g['grab_id']}",
+                     help="Just a touch or a false alarm: no stock change."):
+            _confirm(g, "touched", g.get("item") or g["zone"], g.get("qty_label") if g.get("qty_label") in QTYS else "1",
+                     "Marked as nothing taken")
+        with st.popover("Fix it"):
+            with st.form(f"confirm-{g['grab_id']}"):
+                action = st.selectbox("What happened", ACTIONS, index=ACTIONS.index(g["action"]) if g.get("action") in ACTIONS else 0, format_func=label)
+                item_opts = sorted(set(items) | {g.get("item") or g["zone"]})
+                item = st.selectbox("Item", item_opts, index=item_opts.index(g.get("item") or g["zone"]), format_func=label)
+                qty = st.selectbox("How much", QTYS, index=QTYS.index(g["qty_label"]) if g.get("qty_label") in QTYS else 0, format_func=label)
+                if st.form_submit_button("Save", type="primary"):
+                    _confirm(g, action, item, qty, f"Saved: {label(action)} {label(qty)} of {label(item)}")
 
 # ---------- variance ----------
 st.subheader("Where the food went")
@@ -283,29 +292,32 @@ if variance:
 else:
     st.caption("No variance data for these dates.")
 
-# ---------- trust ----------
-st.subheader("What the agent said (and what it didn't)")
-st.caption("Every text is fact-checked by d1 before it reaches you. Low scores get softened or blocked.")
+# ---------- the iMessage thread ----------
+st.subheader("📱 iMessage with the owner (Photon)")
+st.caption("Both sides of the real thread. Every agent text is fact-checked by d1 before it's sent; low scores are softened or blocked.")
 try:
-    msgs = load("messages", 50)
+    msgs = load("messages", 60)
 except ApiError as e:
     msgs = []
     st.error(str(e))
 if msgs:
-    counts = pd.Series([m["decision"] for m in msgs]).value_counts()
+    out = [m for m in msgs if m["decision"] != "received"]
+    counts = pd.Series([m["decision"] for m in out]).value_counts() if out else pd.Series(dtype=int)
     m1, m2, m3 = st.columns(3)
     m1.metric("Sent", int(counts.get("sent", 0)))
     m2.metric("Softened", int(counts.get("softened", 0)))
-    m3.metric("Blocked", int(counts.get("blocked", 0)))
-    badge = {"sent": "🟢 sent", "softened": "🟡 softened", "blocked": "🔴 blocked"}
-    st.dataframe(
-        pd.DataFrame([{
-            "When": datetime.fromisoformat(str(m["ts"]).replace("Z", "+00:00")).strftime("%a %-I:%M %p"),
-            "Message": m["text"], "d1 score": m["d1_score"], "Decision": badge.get(m["decision"], m["decision"]),
-        } for m in msgs]),
-        hide_index=True, width="stretch",
-        column_config={"d1 score": st.column_config.ProgressColumn("d1 score", min_value=0, max_value=1, format="%.2f"),
-                       "Message": st.column_config.TextColumn(width="large")},
-    )
+    m3.metric("Blocked by d1", int(counts.get("blocked", 0)))
+    for m in reversed(msgs[:30]):   # oldest first, like a phone
+        when = datetime.fromisoformat(str(m["ts"]).replace("Z", "+00:00")).strftime("%-I:%M %p")
+        if m["decision"] == "received":
+            with st.chat_message("user", avatar="🧑‍🍳"):
+                st.markdown(f"{m['text']}  \n<span style='opacity:.5;font-size:.75rem'>{when}</span>", unsafe_allow_html=True)
+        else:
+            tag = {"sent": "", "softened": " · 🟡 softened by d1", "blocked": " · 🔴 blocked by d1 (never sent)"}.get(m["decision"], "")
+            score = f" · d1 {m['d1_score']:.2f}" if m.get("d1_score") is not None else ""
+            with st.chat_message("assistant", avatar="🍕"):
+                body = m["text"] if m["decision"] != "blocked" else f"~~{m['text']}~~"
+                st.markdown(f"{body}  \n<span style='opacity:.5;font-size:.75rem'>{when}{score}{tag}</span>",
+                            unsafe_allow_html=True)
 else:
-    st.caption("No agent messages yet.")
+    st.caption("No messages yet. Text the line from your phone, or press 'Text me the morning debrief'.")

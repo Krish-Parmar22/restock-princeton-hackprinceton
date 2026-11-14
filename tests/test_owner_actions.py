@@ -42,7 +42,7 @@ def db(tmp_path, monkeypatch):
     monkeypatch.setattr(secure, "settings", fake)
     monkeypatch.setattr(sheet, "settings", fake)
     yield
-    impl.use_database(None)
+    impl.use_database("postgresql://localhost:5432/pizza_test_default")   # never back to live
 
 
 def test_count_by_text_sets_on_hand_and_marks_the_sheet(db):

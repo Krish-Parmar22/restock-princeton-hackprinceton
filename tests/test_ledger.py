@@ -37,7 +37,7 @@ def db():
         conn.execute("INSERT INTO pos_sales (ts, menu_item, qty) VALUES (%s, 'pep pie', 4)", (_t(18),))  # theo: pep 2.0, cheese 4.0
         conn.execute("INSERT INTO counts (ts, item_id, qty) VALUES (%s, 1, 12), (%s, 2, 20)", (_t(9), _t(9)))
     yield URL
-    impl.use_database(None)
+    impl.use_database("postgresql://localhost:5432/pizza_test_default")   # never back to live
 
 
 def grab(gid, item, action="took", label="handful", status="logged", h=18):
