@@ -39,7 +39,7 @@ DELIVERIES = {  # day offset from Sunday -> {item: qty}, 9am
 }
 PLANTED = {"item": "pepperoni", "weekdays": {1, 3}, "hours": range(17, 22), "over": 0.18}  # Tue=1, Thu=3 (Mon=0)
 
-TABLES = "messages, orders, d1_answers, grab_events, counts, purchases, pos_sales, recipes, items"
+TABLES = "alerts, chats, messages, orders, d1_answers, grab_events, counts, purchases, pos_sales, recipes, items"
 
 
 def _local(d: date, h: int, m: int = 0) -> datetime:
