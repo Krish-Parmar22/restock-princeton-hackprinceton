@@ -34,6 +34,8 @@ class Settings:
     owner_totp_secret: str = os.getenv("OWNER_TOTP_SECRET", "")
     # Where the live Excel sheet is written after every change (the owner opens this file).
     sheet_path: Path = Path(os.getenv("SHEET_PATH", str(ROOT / "exports" / "Inventory.xlsx"))).resolve()
+    # Daily reorder-plan text at this shop-local time (America/New_York), "HH:MM". "" = off.
+    plan_time: str = os.getenv("PLAN_TIME", "")
 
 
 settings = Settings()

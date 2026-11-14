@@ -19,6 +19,7 @@ from app.config import settings
 
 log = logging.getLogger("api")
 WATCHER: dict = {}  # {"thread":..., "watcher":...} when running in-process
+PLAN: dict = {}     # {"thread":..., "job":...} when PLAN_TIME is set
 
 
 @asynccontextmanager
@@ -39,6 +40,12 @@ async def lifespan(_app: FastAPI):
         t.start()
         WATCHER.update(thread=t, watcher=w)
         log.info("grab watcher running on %s", w.dir)
+    if settings.plan_time:  # daily reorder-plan text (app/agent/daily_plan.py)
+        from app.agent import daily_plan
+
+        started = daily_plan.start(settings.plan_time)
+        if started:
+            PLAN.update(thread=started[0], job=started[1])
     yield
 
 
