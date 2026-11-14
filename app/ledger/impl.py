@@ -243,3 +243,41 @@ def record_message(chat_id: str | None, text: str, d1_score: float | None, decis
         conn.execute(
             "INSERT INTO messages (chat_id, text, d1_score, decision, claims) VALUES (%s, %s, %s, %s, %s)",
             (chat_id, text, d1_score, decision, Jsonb(claims)))
+
+
+def set_par(item: str, par: float) -> dict:
+    import math
+    if not isinstance(par, (int, float)) or not math.isfinite(par) or par < 0 or par > 100_000:
+        raise ValueError(f"par must be a non-negative number, got {par!r}")
+    with _conn() as conn:
+        _item(conn, item)
+        old = conn.execute("SELECT par FROM items WHERE name = %s", (item,)).fetchone()["par"]
+        conn.execute("UPDATE items SET par = %s WHERE name = %s", (par, item))
+    return {"item": item, "old_par": float(old), "new_par": float(par)}
+
+
+def remember_chat(chat_id: str, sender: str | None) -> None:
+    with _conn() as conn:
+        conn.execute("""INSERT INTO chats (chat_id, sender) VALUES (%s, %s)
+                        ON CONFLICT (chat_id) DO UPDATE SET last_seen = now(), sender = EXCLUDED.sender""",
+                     (chat_id, sender))
+
+
+def known_chats() -> list[str]:
+    with _conn() as conn:
+        return [r["chat_id"] for r in conn.execute("SELECT chat_id FROM chats ORDER BY last_seen DESC").fetchall()]
+
+
+def recently_alerted(kind: str, item: str, hours: float) -> bool:
+    with _conn() as conn:
+        return conn.execute(
+            """SELECT 1 FROM alerts a JOIN items i ON i.id = a.item_id
+                WHERE a.kind = %s AND i.name = %s AND a.ts > now() - make_interval(secs => %s) LIMIT 1""",
+            (kind, item, hours * 3600)).fetchone() is not None
+
+
+def record_alert(kind: str, item: str, chat_id: str, text: str) -> None:
+    with _conn() as conn:
+        it = _item(conn, item)
+        conn.execute("INSERT INTO alerts (kind, item_id, chat_id, text) VALUES (%s, %s, %s, %s)",
+                     (kind, it["id"], chat_id, text))

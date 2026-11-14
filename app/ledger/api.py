@@ -61,3 +61,29 @@ def record_message(chat_id: str | None, text: str, d1_score: float | None, decis
 def list_messages(limit: int = 50) -> list[MessageRow]:
     from app.ledger import impl
     return impl.list_messages(limit)
+
+
+def set_par(item: str, par: float) -> dict:
+    """Owner correction: change an item's par level. Returns {item, old_par, new_par}."""
+    from app.ledger import impl
+    return impl.set_par(item, par)
+
+
+def remember_chat(chat_id: str, sender: str | None) -> None:
+    from app.ledger import impl
+    impl.remember_chat(chat_id, sender)
+
+
+def known_chats() -> list[str]:
+    from app.ledger import impl
+    return impl.known_chats()
+
+
+def recently_alerted(kind: str, item: str, hours: float = 12) -> bool:
+    from app.ledger import impl
+    return impl.recently_alerted(kind, item, hours)
+
+
+def record_alert(kind: str, item: str, chat_id: str, text: str) -> None:
+    from app.ledger import impl
+    impl.record_alert(kind, item, chat_id, text)

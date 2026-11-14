@@ -96,3 +96,20 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS grab_events_t_start ON grab_events (t_start);
 CREATE INDEX IF NOT EXISTS pos_sales_ts ON pos_sales (ts);
+
+-- Owners' chats the agent may text first (Photon only allows chats that texted the line)
+CREATE TABLE IF NOT EXISTS chats (
+    chat_id   TEXT PRIMARY KEY,
+    sender    TEXT,
+    last_seen TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Proactive alerts already sent, so the owner isn't re-texted every grab
+CREATE TABLE IF NOT EXISTS alerts (
+    id      SERIAL PRIMARY KEY,
+    ts      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    kind    TEXT NOT NULL,          -- 'below_par'
+    item_id INT REFERENCES items(id),
+    chat_id TEXT,
+    text    TEXT NOT NULL
+);

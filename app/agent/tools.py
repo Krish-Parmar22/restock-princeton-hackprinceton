@@ -107,4 +107,28 @@ def place_order(item: str, qty: float, supplier: str | None = None) -> str:
     return _j({"order_id": oid, "item": item, "qty": qty, "status": "approved"})
 
 
-ALL_TOOLS = [get_stock, get_variance, list_grabs, d1_look, send_text, place_order]
+@tool
+def correct_grab(grab_id: str, action: str, item: str, qty_label: str) -> str:
+    """Owner correction of one camera grab, e.g. "that was a put-back" or "that was cheese, not
+    dough". action: took | put_back | touched. qty_label: pinch | handful | whole_container.
+    The ledger is updated immediately and the variance changes."""
+    from app.contracts import GrabConfirm
+    try:
+        row = ledger.confirm_grab(grab_id, GrabConfirm(action=action, item=item, qty_label=qty_label))
+    except (KeyError, ValueError) as e:
+        return _j({"error": str(e)})
+    return _j({"grab_id": row.grab_id, "action": row.action, "item": row.item,
+               "qty_label": row.qty_label, "status": row.status})
+
+
+@tool
+def set_par(item: str, par: float) -> str:
+    """Owner correction: change an ingredient's par level (the reorder line), e.g.
+    "our pepperoni par is 25 lb now". Also note it in /memories/shop.md."""
+    try:
+        return _j(ledger.set_par(item.lower().strip(), par))
+    except (KeyError, ValueError) as e:
+        return _j({"error": str(e)})
+
+
+ALL_TOOLS = [get_stock, get_variance, list_grabs, d1_look, send_text, place_order, correct_grab, set_par]

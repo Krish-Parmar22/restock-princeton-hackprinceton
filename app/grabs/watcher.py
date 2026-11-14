@@ -61,6 +61,7 @@ class GrabWatcher:
         self.items_fn, self.record_fn, self.settle_s = items_fn, record_fn, settle_s
         self.backoff_base_s = backoff_base_s
         self.hand_check = hand_check
+        self.after_poll: Callable[[], object] | None = None
         self.state_path = self.dir / PROCESSED_FILE
         self.processed: set[str] = self._load_state()
         self.failures: dict[str, dict] = {}  # folder name -> {"count", "next_try", "error"}
@@ -186,7 +187,8 @@ class GrabWatcher:
         log.info("watching %s every %.1fs", self.dir, interval)
         while True:
             try:
-                self.poll_once()
+                if self.poll_once() and self.after_poll:
+                    self.after_poll()   # e.g. proactive below-par alerts
             except Exception:  # never let one bad poll kill the watcher thread
                 log.exception("poll failed; continuing")
             time.sleep(interval)
@@ -211,4 +213,7 @@ def build_watcher(allow_fake: bool = False, grabs_dir: Path | None = None) -> "G
             log.info("YOLO-World hand double-check: on (weights loaded)")
         else:
             log.warning("YOLO_ENABLED but ultralytics isn't installed: d1 only")
-    return GrabWatcher(grabs_dir, client=client, settle_s=1.0, hand_check=hand_check)
+    w = GrabWatcher(grabs_dir, client=client, settle_s=1.0, hand_check=hand_check)
+    from app.agent.alerts import check_and_alert
+    w.after_poll = check_and_alert
+    return w

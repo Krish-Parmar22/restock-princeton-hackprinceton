@@ -71,10 +71,21 @@ def pending_approval(agent, config) -> list[dict]:
 
 
 def _approval_prompt(reqs: list[dict]) -> str:
+    from app.ledger import api as ledger
+    try:
+        units = {r.item: r.unit for r in ledger.get_inventory()}
+    except Exception:
+        units = {}
     lines = []
     for r in reqs:
         a = r.get("args", {})
-        lines.append(f"{a.get('qty')} {a.get('item')}" if a else r.get("name", "this"))
+        if a:
+            qty = a.get("qty")
+            qty = int(qty) if isinstance(qty, float) and qty.is_integer() else qty
+            unit = units.get(str(a.get("item", "")).lower(), "")
+            lines.append(f"{qty} {unit} of {a.get('item')}".replace("  ", " "))
+        else:
+            lines.append(r.get("name", "this"))
     return "Approve this order: " + ", ".join(lines) + "? Reply yes or no."
 
 
@@ -113,6 +124,11 @@ def _final_ai_text(agent, config) -> str | None:
 
 
 def handle_inbound(msg: InboundMessage) -> InboundReply:
+    try:  # remember who texted the line: Photon only lets us text chats that texted us first
+        from app.ledger import api as ledger
+        ledger.remember_chat(msg.chat_id, msg.sender)
+    except Exception:
+        pass
     agent = get_agent()
     if agent is None:
         return InboundReply(reply=f"(agent not configured: set AGENT_MODEL) echo: {msg.text}")
