@@ -5,7 +5,9 @@ Definitions (docs/architecture.md):
   actual usage      = sum(qty of 'took' grabs) - sum(qty of 'put_back' grabs),
                       counting only status logged/confirmed (flagged waits for the owner)
   on_hand           = latest count + purchases since - actual usage since
-Days are America/New_York local days.
+                      (a count at time T includes everything at or before T; events strictly
+                       after T are applied on top. Same-ts counts: highest id wins.)
+Days are America/New_York local days; naive datetimes are treated as shop-local.
 """
 from __future__ import annotations
 
@@ -46,6 +48,8 @@ def _f(x) -> float:
 
 def get_inventory(at: datetime | None = None) -> list[InventoryRow]:
     at = at or datetime.now(TZ)
+    if at.tzinfo is None:  # naive -> shop-local, never host-local
+        at = at.replace(tzinfo=TZ)
     day_start = _day_start(at.astimezone(TZ).date())
     sql = f"""
     SELECT i.name, i.unit, i.par, i.unit_cost,
@@ -61,17 +65,17 @@ def get_inventory(at: datetime | None = None) -> list[InventoryRow]:
       FROM items i
       LEFT JOIN LATERAL (SELECT qty, ts FROM counts
                           WHERE item_id = i.id AND ts <= %(at)s
-                          ORDER BY ts DESC LIMIT 1) c ON true
+                          ORDER BY ts DESC, id DESC LIMIT 1) c ON true
      ORDER BY i.name"""
     with _conn() as conn:
         rows = conn.execute(sql, {"at": at, "day_start": day_start}).fetchall()
     out = []
     for r in rows:
-        on_hand = float(r["base"]) + float(r["bought"]) - float(r["used_since"])
+        on_hand = r["base"] + r["bought"] - r["used_since"]  # Decimal math; float only for output
         out.append(InventoryRow(
             item=r["name"], unit=r["unit"], on_hand=_f(on_hand), par=_f(r["par"]),
             used_today=_f(r["used_today"]), unit_cost=_f(r["unit_cost"]),
-            below_par=on_hand < float(r["par"]),
+            below_par=on_hand < r["par"],
         ))
     return out
 
@@ -162,6 +166,8 @@ def _qty(item: dict | None, label: str | None) -> float | None:
 def record_grab(row: dict, d1_answers: list[dict]) -> None:
     with _conn() as conn:
         item = _item(conn, row["item"]) if row.get("item") else None
+        if item and row.get("qty_label") and _qty(item, row["qty_label"]) is None:
+            row = {**row, "status": "flagged"}  # unknown amount: owner must confirm, never silently uncounted
         inserted = conn.execute(
             """INSERT INTO grab_events (grab_id, zone, camera_id, source, t_start, t_end, item_id, action,
                                         qty_label, qty, confidence, status, frames)
@@ -184,6 +190,8 @@ def record_grab(row: dict, d1_answers: list[dict]) -> None:
 def confirm_grab(grab_id: str, body: GrabConfirm) -> GrabRow:
     with _conn() as conn:
         item = _item(conn, body.item)
+        if _qty(item, body.qty_label) is None:
+            raise ValueError(f"{body.item} has no amount for {body.qty_label!r}")
         updated = conn.execute(
             """UPDATE grab_events SET action = %s, item_id = %s, qty_label = %s, qty = %s, status = 'confirmed'
                 WHERE grab_id = %s RETURNING grab_id""",
@@ -206,10 +214,17 @@ def set_order_status(order_id: int, status: str) -> None:
     if status not in ("draft", "approved", "rejected"):
         raise ValueError(f"bad status {status!r}")
     with _conn() as conn:
-        o = conn.execute("UPDATE orders SET status = %s WHERE id = %s RETURNING item_id, qty, supplier",
-                         (status, order_id)).fetchone()
+        # Only a draft can change status, so approving twice (or concurrently) can't double-purchase.
+        o = conn.execute(
+            "UPDATE orders SET status = %s WHERE id = %s AND status = 'draft' RETURNING item_id, qty, supplier",
+            (status, order_id)).fetchone()
         if o is None:
-            raise KeyError(f"no order {order_id}")
+            cur = conn.execute("SELECT status FROM orders WHERE id = %s", (order_id,)).fetchone()
+            if cur is None:
+                raise KeyError(f"no order {order_id}")
+            if cur["status"] == status:
+                return  # already done; idempotent
+            raise ValueError(f"order {order_id} is already {cur['status']}")
         if status == "approved":
             conn.execute(
                 """INSERT INTO purchases (ts, item_id, qty, unit_cost, supplier, source)

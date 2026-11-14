@@ -141,3 +141,29 @@ def test_api_shapes(db):
     ok = c.post("/api/grabs/g1/confirm", json={"action": "put_back", "item": "pepperoni", "qty_label": "pinch"})
     assert ok.status_code == 200 and ok.json()["status"] == "confirmed"
     assert c.get("/api/messages?limit=5").status_code == 200
+
+
+def test_approve_twice_buys_once(db):
+    oid = api.draft_order("pepperoni", 5)
+    api.set_order_status(oid, "approved")
+    api.set_order_status(oid, "approved")          # idempotent
+    with pytest.raises(ValueError):
+        api.set_order_status(oid, "rejected")      # can't un-approve
+    with connect(URL) as conn:
+        assert conn.execute("SELECT count(*) n FROM purchases").fetchone()["n"] == 1
+
+
+def test_unknown_qty_label_is_flagged_not_silently_logged(db):
+    with connect(URL) as conn:
+        conn.execute("UPDATE items SET qty_per_label = '{\"handful\": 0.25}' WHERE name = 'pepperoni'")
+    api.record_grab(grab("u", "pepperoni", label="whole_container"), [])
+    assert api.list_grabs(D, "flagged")[0].grab_id == "u"
+    with pytest.raises(ValueError):
+        api.confirm_grab("u", GrabConfirm(action="took", item="pepperoni", qty_label="pinch"))
+
+
+def test_naive_datetime_is_shop_local(db):
+    api.record_grab(grab("late", "pepperoni", h=23), [])            # 11pm local on D
+    naive = datetime(D.year, D.month, D.day, 23, 30)                # no tzinfo
+    inv = {r.item: r for r in api.get_inventory(naive)}
+    assert inv["pepperoni"].used_today == 0.25

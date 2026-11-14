@@ -6,7 +6,7 @@ __pycache__/
 .venv/
 .pgdata/
 *.log
-grabs/
+/grabs/
 data/real/
 !.env.example
 .pytest_cache/

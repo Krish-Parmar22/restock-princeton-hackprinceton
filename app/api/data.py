@@ -44,6 +44,8 @@ def confirm(grab_id: str, body: GrabConfirm):
         return ledger.confirm_grab(grab_id, body)
     except KeyError as e:
         raise HTTPException(404, str(e)) from None
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
 
 
 @router.get("/api/messages", response_model=list[MessageRow])
