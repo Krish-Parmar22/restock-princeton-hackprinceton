@@ -136,7 +136,39 @@ def run_inbound(agent, msg: InboundMessage, d1_client=None) -> InboundReply:
         if still:  # fixed template of the exact pending action, not model text
             texts.append(_approval_prompt(still))
         images += _sheet_picture(ctx)
+    texts, images = _safe_out(msg.chat_id, texts, images)
     return InboundReply(reply="\n\n".join(texts) if texts else None, images=images)
+
+
+LOCKED_NOTE = "That's bank info. Reply with the 6-digit code from your authenticator app to see it."
+
+
+def _safe_out(chat_id: str | None, texts: list[str], images: list[str]) -> tuple[list[str], list[str]]:
+    """Last gate before anything reaches the owner's phone, whatever produced it."""
+    from app import secure
+    out = []
+    for t in texts:
+        if secure.leaks_bank_info(chat_id, t):
+            import logging
+            logging.getLogger(__name__).warning("blocked a bank amount on a locked chat")
+            if LOCKED_NOTE not in out:
+                out.append(LOCKED_NOTE)
+        else:
+            out.append(t)
+    return out, [i for i in images if allowed_image(i)]
+
+
+def allowed_image(path: str) -> bool:
+    """Only pictures we made: the sheet picture and camera grab frames. Never any other file."""
+    from pathlib import Path
+
+    from app import sheet
+    try:
+        p = Path(path).resolve()
+    except Exception:
+        return False
+    roots = [sheet.PNG_DIR.resolve(), settings.grabs_dir.resolve()]
+    return p.suffix.lower() in (".png", ".jpg", ".jpeg") and p.is_file() and any(p.is_relative_to(r) for r in roots)
 
 
 def _sheet_picture(ctx) -> list[str]:
@@ -233,6 +265,8 @@ def notify(agent, chat_id: str, instruction: str) -> dict:
         still = pending_approval(agent, config)
         extra = _approval_prompt(still) if still else None
         images = _sheet_picture(ctx)
+        texts, images = _safe_out(chat_id, [extra] if extra else [], images)
+        extra = texts[0] if texts else None
         if extra or images:
             httpx.post(f"{settings.bridge_url}/send", timeout=15, json=SendRequest(
                 chat_id=chat_id, text=extra or "Here's the sheet.", images=images).model_dump())

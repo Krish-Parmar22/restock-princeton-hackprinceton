@@ -31,6 +31,7 @@ def db(tmp_path, monkeypatch):
         c.execute("CREATE DATABASE pizza_test_owner")
     apply_schema(URL)
     impl.use_database(URL)
+    secure._SCHEMA_DONE.clear()
     with connect(URL) as conn:
         for name, par, have in (("coke", 6, 4), ("sprite", 6, 20)):
             conn.execute("INSERT INTO items (name, unit, unit_cost, par, qty_per_label) VALUES (%s,'each',1.0,%s,%s)",
@@ -151,3 +152,83 @@ def test_exact_can_counts_move_stock_exactly(db, label, action, expect, status):
     inv = {r.item: r for r in impl.get_inventory(now + timedelta(minutes=1))}
     assert inv["coke"].on_hand == expect           # started at 4 cans
     assert impl.list_grabs(now.date(), "all")[0].status == status
+
+
+# ---- Codex adversarial review (Nov 14) regressions -------------------------------------------
+
+def _seed_bank(conn):
+    conn.execute("INSERT INTO purchases (ts, item_id, qty, unit_cost, supplier, source) "
+                 "SELECT now(), id, 300, 1.0, 'Shore Foods', 'invoice' FROM items WHERE name = 'coke'")
+
+
+def test_bank_amounts_never_leave_a_locked_chat(db):
+    from app import bank
+    with connect(URL) as conn:
+        _seed_bank(conn)
+    bal = bank.statement(31)["balance"]
+    leaky = f"Balance is ${bal:,.2f}"
+    assert secure.leaks_bank_info("chat-L", leaky), "locked chat: a statement amount is blocked"
+    assert not secure.leaks_bank_info("chat-L", "We have 18 cokes, par 6."), "stock numbers still flow"
+    texts, _ = runtime._safe_out("chat-L", [leaky, "18 cokes left"], [])
+    assert texts == [runtime.LOCKED_NOTE, "18 cokes left"]
+    secure.try_code("chat-L", pyotp.TOTP(SECRET).now())
+    assert not secure.leaks_bank_info("chat-L", leaky), "unlocked chat: allowed"
+    assert secure.leaks_bank_info("chat-other", leaky), "unlocking one chat never opens another"
+
+
+def test_only_our_own_pictures_can_be_attached(db, tmp_path):
+    from app.config import settings as real
+    qr = real.sheet_path.parent / "authenticator-qr.png"
+    assert not runtime.allowed_image(str(qr)), "the authenticator QR can never be texted"
+    other = tmp_path / "x.png"
+    other.write_bytes(b"\x89PNG")
+    assert not runtime.allowed_image(str(other))
+    png = sheet.refresh()["png"]
+    assert runtime.allowed_image(png)
+
+
+def test_new_chat_ids_get_no_extra_guesses_and_codes_work_once_anywhere(db):
+    assert secure.try_code("a", "111111").status == "bad"
+    assert secure.try_code("b", "222222").status == "bad"
+    assert secure.try_code("c", "333333").status == "locked_out", "3 wrong codes across chats lock the owner"
+    later = datetime.now(timezone.utc) + timedelta(minutes=secure.LOCKOUT_MIN + 1)
+    code = pyotp.TOTP(SECRET).at(later)
+    assert secure.try_code("d", code, at=later).status == "ok"
+    assert secure.try_code("e", code, at=later).status == "reused", "a code can't be replayed in another chat"
+
+
+def test_lockout_ends_an_open_unlock(db):
+    secure.try_code("u", pyotp.TOTP(SECRET).now())
+    assert secure.is_unlocked("u")
+    for _ in range(3):
+        secure.try_code("u", "000000")
+    assert not secure.is_unlocked("u")
+
+
+def test_parallel_codes_count_every_failure_and_accept_a_code_once(db):
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(3) as ex:
+        res = list(ex.map(lambda i: secure.try_code(f"p{i}", "999999").status, range(3)))
+    assert "locked_out" in res, res
+    later = datetime.now(timezone.utc) + timedelta(minutes=secure.LOCKOUT_MIN + 1)
+    code = pyotp.TOTP(SECRET).at(later)
+    with ThreadPoolExecutor(4) as ex:
+        res = list(ex.map(lambda i: secure.try_code(f"q{i}", code, at=later).status, range(4)))
+    assert res.count("ok") == 1, res
+
+
+@pytest.mark.parametrize("text", ["123456", "123 456", "123  456", "my code is 123456", "1 2 3 4 5 6", "code: 123-456"])
+def test_code_shaped_messages_are_kept_from_the_model(text):
+    assert secure.looks_like_code(text)
+
+
+@pytest.mark.parametrize("text", ["we have 18 cokes", "order 120 cans by 5pm", "balance?", "1234567"])
+def test_normal_messages_are_not_codes(text):
+    assert not secure.looks_like_code(text)
+
+
+def test_default_general_purpose_subagent_is_replaced_read_only():
+    from app.agent import build
+    names = {t.name for t in build.GENERAL["tools"]}
+    assert build.GENERAL["name"] == "general-purpose"
+    assert not names & {"send_text", "get_bank_statement", "place_order", "place_orders"}

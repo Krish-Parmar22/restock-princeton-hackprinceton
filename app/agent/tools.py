@@ -90,6 +90,11 @@ def send_text(message: str, images: list[str] | None = None) -> str:
         return "sent"
     if not ctx.chat_id:
         return "error: no chat to send to"
+    from app import secure
+    from app.agent.runtime import allowed_image
+    if secure.leaks_bank_info(ctx.chat_id, message):
+        return "BLOCKED: bank info is locked. Don't send any bank amounts."
+    payload["images"] = [i for i in payload["images"] if allowed_image(i)]
     r = httpx.post(f"{settings.bridge_url}/send",
                    json=SendRequest(chat_id=ctx.chat_id, **payload).model_dump(), timeout=10)
     ok = r.status_code == 200 and r.json().get("ok")

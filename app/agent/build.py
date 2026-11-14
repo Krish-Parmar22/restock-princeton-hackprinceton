@@ -63,6 +63,17 @@ PURCHASING = {
 }
 
 
+# Replaces deepagents' automatic general-purpose subagent, which would otherwise get ALL tools
+# (send_text, bank) WITHOUT the d1 guard middleware (Codex review, Nov 14). Read-only here.
+GENERAL = {
+    "name": "general-purpose",
+    "description": "Research helper for multi-step questions about stock, usage and reorders. Read-only.",
+    "system_prompt": ("You research inventory questions for a restaurant using read-only tools and return short factual "
+                      "notes with exact numbers from tools. You cannot message anyone or see bank information."),
+    "tools": [get_stock, get_variance, list_grabs, reorder_plan],
+}
+
+
 def _model(spec: str | BaseChatModel) -> BaseChatModel:
     """'openrouter:<model>' (e.g. openrouter:openai/gpt-oss-120b) uses OpenRouter's OpenAI-compatible
     API with OPENROUTER_API_KEY; anything else goes to LangChain's init_chat_model."""
@@ -98,7 +109,7 @@ def build_agent(model: str | BaseChatModel, *, checkpointer, store=None, d1_clie
         tools=ALL_TOOLS,
         system_prompt=SYSTEM_PROMPT.format(today=datetime.now(TZ).date().isoformat()),
         middleware=middleware,
-        subagents=[ANALYST, PURCHASING],
+        subagents=[ANALYST, PURCHASING, GENERAL],
         interrupt_on={"place_order": True, "place_orders": True},
         backend=backend,
         checkpointer=checkpointer,
