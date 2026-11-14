@@ -5,7 +5,9 @@ Reads the agent API at API_URL (default http://localhost:8000). If it's down, sh
 """
 from __future__ import annotations
 
+import hmac
 import io
+import os
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -105,6 +107,11 @@ with st.sidebar:
     day = st.date_input("Camera day (flagged grabs)", today, max_value=today)
     if st.button("↻ Refresh"):
         _load.clear()
+    # Public link (Tailscale Funnel): anyone can look, only the owner can change the ledger.
+    owner_key = os.getenv("DASHBOARD_OWNER_KEY", "")
+    can_edit = not owner_key or hmac.compare_digest(st.text_input("Owner key (to confirm grabs)", type="password"), owner_key)
+    if owner_key and not can_edit:
+        st.caption("View only. Enter the owner key to confirm grabs.")
 
 try:
     inventory = load("inventory")
@@ -158,7 +165,7 @@ for g in flagged:
             item_opts = sorted(set(items) | {g.get("item") or g["zone"]})
             item = c2.selectbox("Item", item_opts, index=item_opts.index(g.get("item") or g["zone"]), format_func=label)
             qty = c3.selectbox("How much", QTYS, index=QTYS.index(g["qty_label"]) if g.get("qty_label") in QTYS else 1, format_func=label)
-            if st.form_submit_button("✓ Confirm", type="primary"):
+            if st.form_submit_button("✓ Confirm", type="primary", disabled=not can_edit) and can_edit:
                 try:
                     a.confirm(g["grab_id"], action, item, qty)
                     _load.clear()
