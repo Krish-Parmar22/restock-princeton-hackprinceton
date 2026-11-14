@@ -244,3 +244,15 @@ def test_wording_is_chosen_per_box(db, monkeypatch):
     assert checks.scene_for("coke") == "drinks" and checks.scene_for("cheese") == "pizza"
     monkeypatch.setattr(checks, "settings", SimpleNamespace(scene="drinks"))
     assert checks.scene_for("cheese") == "drinks", "SCENE forces one wording"
+
+
+def test_briefing_facts_are_computed_not_counted_by_the_model(db):
+    """The morning text's numbers come from one tool, with units, so the d1 guard can verify them."""
+    from app.agent.tools import briefing_facts
+    now = datetime.now(TZ)
+    impl.record_grab({"grab_id": "f1", "zone": "coke", "camera_id": "c", "source": "webcam", "t_start": now,
+                      "t_end": now, "item": "coke", "action": "took", "qty_label": "more", "confidence": 0.5,
+                      "status": "flagged", "frames": {"before": "", "during": [], "after": ""}}, [])
+    f = json.loads(briefing_facts.invoke({}))
+    assert f["grabs_need_ok"] == 1 and "1 camera grab need" in f["suggested_text"]
+    assert f["order"] and f["order"][0]["item"] == "coke" and f"${f['order_total']:,.2f}" in f["suggested_text"]

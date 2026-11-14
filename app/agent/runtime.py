@@ -294,12 +294,11 @@ def briefing_task(day: str | None = None) -> str:
         f"d1_look on each clip). For each grab give a suggested action, item and count with how sure you are.'\n"
         f"3. purchasing: 'Plan orders for the next 3 days with demand_forecast(3) and reorder_plan. Return item, "
         f"qty, cost and why (forecast vs par).'\n"
-        f"Then write all three results to /reports/briefing-{today.isoformat()}.md (write_file). Then send the owner "
-        f"ONE short text with send_text: line 1 = how yesterday went in one plain sentence with the single biggest "
-        f"change; line 2 = how many grabs need their OK and what the reviewer suggests (they can reply 'confirm "
-        f"grabs'); line 3 = what you're about to order and the total. Finally call place_orders ONCE with the "
-        f"purchasing plan's items (the owner approves by text). If nothing needs ordering, say so and skip "
-        f"place_orders.")
+        f"Then write all three results to /reports/briefing-{today.isoformat()}.md (write_file). Then call "
+        f"briefing_facts(day=\"{y}\") and send the owner ONE text with send_text: its suggested_text, plus at most "
+        f"one short sentence from the reviewer (e.g. 'Most look like 1 Sprite; reply confirm grabs') with no new "
+        f"numbers. Finally, if briefing_facts has an order, call place_orders ONCE with exactly its items and qty "
+        f"(the owner approves by text).")
 
 
 def send_morning_briefing(chat_ids: list[str] | None = None) -> list[dict]:

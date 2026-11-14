@@ -258,10 +258,49 @@ def flagged_grabs(day: str | None = None) -> str:
     from app.ledger.impl import TZ
     d = date.fromisoformat(day) if day else _dt.now(TZ).date()
     rows = ledger.list_grabs(d, "flagged")
-    return _j([{"grab_id": g.grab_id, "zone": g.zone, "action": g.action, "item": g.item,
-                "qty_label": g.qty_label, "confidence": g.confidence} for g in rows[:12]])
+    by_item: dict[str, int] = {}
+    for g in rows:
+        by_item[g.item or g.zone] = by_item.get(g.item or g.zone, 0) + 1
+    # counts are returned, never left for the model to count (the d1 guard only accepts tool numbers)
+    return _j({"day": d.isoformat(), "total_flagged": len(rows), "flagged_by_item": by_item,
+               "grabs": [{"grab_id": g.grab_id, "zone": g.zone, "action": g.action, "item": g.item,
+                          "qty_label": g.qty_label, "confidence": g.confidence} for g in rows[:12]]})
+
+
+@tool
+def briefing_facts(day: str | None = None) -> str:
+    """The numbers for the owner's morning text, computed in code: yesterday's biggest change vs a
+    normal day (with its unit), how many grabs need the owner's OK, and the reorder total. Text the
+    owner ONLY these numbers; the subagents' reports are for detail."""
+    from datetime import datetime as _dt, timedelta as _td
+    from app.ledger.impl import TZ
+    today = _dt.now(TZ).date()
+    y = date.fromisoformat(day) if day else today - _td(days=1)
+    trend = [r for r in ledger.usage_trend(y) if r["typical"] > 0 and r["change_pct"] is not None]
+    top = max(trend, key=lambda r: abs(r["change_pct"]), default=None)
+    flagged = len(ledger.list_grabs(y, "flagged")) + (len(ledger.list_grabs(today, "flagged")) if y != today else 0)
+    plan = ledger.reorder_plan()
+    fc = [f for f in ledger.demand_forecast(3) if f["order_to_cover"] > 0]
+    order = {p["item"]: {"item": p["item"], "qty": p["order_qty"], "unit": p["unit"], "cost": p["cost"]} for p in plan}
+    for f in fc:
+        if f["item"] not in order or f["order_to_cover"] > order[f["item"]]["qty"]:
+            order[f["item"]] = {"item": f["item"], "qty": f["order_to_cover"], "unit": f["unit"], "cost": f["cost"]}
+    items = sorted(order.values(), key=lambda o: -o["cost"])
+    total = round(sum(o["cost"] for o in items), 2)
+    lines = []
+    if top:
+        word = "up" if top["change_pct"] >= 0 else "down"
+        lines.append(f"Yesterday: {top['item'].replace('_', ' ')} {word} {abs(top['change_pct'])}% "
+                     f"({top['used']:g} {top['unit']} vs a typical {round(top['typical'], 1):g}).")
+    else:
+        lines.append("Yesterday looked like a normal day.")
+    lines.append(f"{flagged} camera grab{'s' if flagged != 1 else ''} need your OK." if flagged else "No grabs need your OK.")
+    lines.append(f"Planned order: " + ", ".join(f"{o['qty']:g} {o['item'].replace('_', ' ')}" for o in items)
+                 + f" (${total:,.2f})." if items else "Nothing needs ordering.")
+    return _j({"day": y.isoformat(), "biggest_change": top, "grabs_need_ok": flagged,
+               "order": items, "order_total": total, "suggested_text": "\n".join(lines)})
 
 
 ALL_TOOLS = [get_stock, get_variance, list_grabs, d1_look, send_text, place_order, place_orders, receive_delivery,
              correct_grab, set_par, record_count, reorder_plan, show_sheet, get_bank_statement,
-             usage_trend, demand_forecast, flagged_grabs]
+             usage_trend, demand_forecast, flagged_grabs, briefing_facts]
