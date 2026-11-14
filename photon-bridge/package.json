@@ -1,0 +1,23 @@
+{
+  "name": "photon-bridge",
+  "private": true,
+  "type": "module",
+  "description": "Photon iMessage <-> agent API bridge. Contract: docs/arnav-shah.md",
+  "scripts": {
+    "start": "tsx --env-file-if-exists=.env src/index.ts",
+    "dev": "PHOTON_PROVIDER=terminal tsx --env-file-if-exists=.env src/index.ts",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "spectrum-ts": "^12.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3"
+  }
+}
