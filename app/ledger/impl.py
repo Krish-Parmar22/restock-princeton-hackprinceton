@@ -5,6 +5,7 @@ Definitions (docs/architecture.md):
   actual usage      = sum(qty of 'took' grabs) - sum(qty of 'put_back' grabs),
                       counting only status logged/confirmed (flagged waits for the owner)
   on_hand           = latest count + purchases since - actual usage since
+                      (purchases = RECEIVED deliveries; an approved order is on_order, not on the shelf)
                       (a count at time T includes everything at or before T; events strictly
                        after T are applied on top. Same-ts counts: highest id wins.)
 Days are America/New_York local days; naive datetimes are treated as shop-local.
@@ -61,7 +62,12 @@ def get_inventory(at: datetime | None = None) -> list[InventoryRow]:
                AND g.t_start > COALESCE(c.ts, '-infinity') AND g.t_start <= %(at)s) AS used_since,
            (SELECT {NET} FROM grab_events g
              WHERE g.item_id = i.id AND {COUNTED}
-               AND g.t_start >= %(day_start)s AND g.t_start <= %(at)s) AS used_today
+               AND g.t_start >= %(day_start)s AND g.t_start <= %(at)s) AS used_today,
+           (SELECT COALESCE(SUM(o.qty), 0) FROM orders o
+             WHERE o.item_id = i.id AND o.status = 'approved') AS on_order,
+           (SELECT count(*) FROM grab_events g
+             WHERE g.status = 'flagged' AND g.t_start >= %(day_start)s
+               AND (g.item_id = i.id OR (g.item_id IS NULL AND g.zone = i.name))) AS unreviewed
       FROM items i
       LEFT JOIN LATERAL (SELECT qty, ts FROM counts
                           WHERE item_id = i.id AND ts <= %(at)s
@@ -75,7 +81,7 @@ def get_inventory(at: datetime | None = None) -> list[InventoryRow]:
         out.append(InventoryRow(
             item=r["name"], unit=r["unit"], on_hand=_f(on_hand), par=_f(r["par"]),
             used_today=_f(r["used_today"]), unit_cost=_f(r["unit_cost"]),
-            below_par=on_hand < r["par"],
+            below_par=on_hand < r["par"], on_order=_f(r["on_order"]), unreviewed=int(r["unreviewed"]),
         ))
     return out
 
@@ -217,25 +223,47 @@ def draft_order(item: str, qty: float, chat_id: str | None = None, supplier: str
 
 
 def set_order_status(order_id: int, status: str) -> None:
-    if status not in ("draft", "approved", "rejected"):
+    """draft -> approved | rejected (the owner's yes/no), approved -> received (delivery arrived).
+    Approving does NOT put anything on the shelf: it's an approved reorder draft (on_order) until
+    a delivery is recorded. There is no supplier integration; nothing is sent anywhere."""
+    if status not in ("approved", "rejected", "received"):
         raise ValueError(f"bad status {status!r}")
+    frm = "approved" if status == "received" else "draft"
     with _conn() as conn:
-        # Only a draft can change status, so approving twice (or concurrently) can't double-purchase.
+        # Only one transition from the expected state, so a repeated or concurrent "yes" (or two
+        # delivery texts) can't double-order or double-receive.
         o = conn.execute(
-            "UPDATE orders SET status = %s WHERE id = %s AND status = 'draft' RETURNING item_id, qty, supplier",
-            (status, order_id)).fetchone()
+            "UPDATE orders SET status = %s WHERE id = %s AND status = %s RETURNING item_id, qty, supplier",
+            (status, order_id, frm)).fetchone()
         if o is None:
             cur = conn.execute("SELECT status FROM orders WHERE id = %s", (order_id,)).fetchone()
             if cur is None:
                 raise KeyError(f"no order {order_id}")
             if cur["status"] == status:
                 return  # already done; idempotent
-            raise ValueError(f"order {order_id} is already {cur['status']}")
-        if status == "approved":
+            raise ValueError(f"order {order_id} is {cur['status']}, can't make it {status}")
+        if status == "received":
             conn.execute(
                 """INSERT INTO purchases (ts, item_id, qty, unit_cost, supplier, source)
                    SELECT now(), id, %s, unit_cost, %s, 'agent_order' FROM items WHERE id = %s""",
                 (o["qty"], o["supplier"], o["item_id"]))
+
+
+def receive_orders(item: str | None = None) -> list[dict]:
+    """The delivery came: every approved (on-order) reorder, or just one item's, becomes stock."""
+    with _conn() as conn:
+        rows = conn.execute(
+            """SELECT o.id, i.name AS item, o.qty FROM orders o JOIN items i ON i.id = o.item_id
+               WHERE o.status = 'approved' AND (%s::text IS NULL OR i.name = %s) ORDER BY o.id""",
+            (item, item)).fetchall()
+    done = []
+    for r in rows:
+        try:
+            set_order_status(r["id"], "received")
+            done.append({"order_id": r["id"], "item": r["item"], "qty": _f(r["qty"])})
+        except ValueError:
+            pass   # received concurrently
+    return done
 
 
 def record_message(chat_id: str | None, text: str, d1_score: float | None, decision: str, claims: list[dict]) -> None:
@@ -310,13 +338,13 @@ def list_orders(limit: int = 20) -> list[dict]:
 
 
 def reorder_plan() -> list[dict]:
-    """What to order now: every item below par, topped back up to 2x par (order-up-to level),
+    """What to order now: every item whose on-hand + on-order is below par, topped back up to 2x par,
     whole units only. Pure arithmetic on the ledger, so the agent never invents a quantity."""
     import math
     out = []
     for r in get_inventory():
-        if r.on_hand < r.par:
-            qty = math.ceil(max(0.0, 2 * r.par - r.on_hand))
-            out.append({"item": r.item, "unit": r.unit, "on_hand": r.on_hand, "par": r.par, "order_qty": qty,
-                        "unit_cost": r.unit_cost, "cost": round(qty * r.unit_cost, 2)})
+        if r.on_hand + r.on_order < r.par:   # already-ordered stock counts: no duplicate reorders
+            qty = math.ceil(max(0.0, 2 * r.par - r.on_hand - r.on_order))
+            out.append({"item": r.item, "unit": r.unit, "on_hand": r.on_hand, "on_order": r.on_order, "par": r.par,
+                        "order_qty": qty, "unit_cost": r.unit_cost, "cost": round(qty * r.unit_cost, 2)})
     return sorted(out, key=lambda x: -x["cost"])

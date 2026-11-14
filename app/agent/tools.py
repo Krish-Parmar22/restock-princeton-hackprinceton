@@ -21,11 +21,12 @@ def _j(x) -> str:
 
 @tool
 def get_stock(item: str | None = None) -> str:
-    """Current on-hand stock per ingredient (from counts, deliveries and camera usage).
-    Pass an item name (e.g. 'pepperoni') to get one item, or nothing for all."""
+    """Current on-hand stock per item (from counts, received deliveries and camera usage), plus
+    on_order (approved, not yet delivered) and unreviewed (flagged camera grabs today that the owner
+    hasn't confirmed; on_hand may change once they do). Pass an item name, or nothing for all."""
     rows = [r.model_dump() for r in ledger.get_inventory()]
     if item:
-        rows = [r for r in rows if r["item"] == item.lower().strip()]
+        rows = [r for r in rows if r["item"] == _item_name(item)]
         if not rows:
             return _j({"error": f"unknown item {item!r}"})
     return _j(rows)
@@ -104,8 +105,9 @@ def place_order(item: str, qty: float, supplier: str | None = None) -> str:
     except (KeyError, ValueError) as e:
         return _j({"error": str(e)})
     ledger.set_order_status(oid, "approved")
-    _changed(f"ordered {qty:g} {item}")
-    return _j({"order_id": oid, "item": item, "qty": qty, "status": "approved"})
+    _changed(f"{qty:g} {item} on order")
+    return _j({"order_id": oid, "item": item, "qty": qty, "status": "approved draft: on order, not yet received",
+               "note": "No supplier integration: nothing was sent. Stock goes up when the delivery is recorded."})
 
 
 @tool
@@ -123,20 +125,34 @@ def place_orders(orders: list[dict], supplier: str | None = None) -> str:
         except (KeyError, ValueError, TypeError) as e:
             errors.append({"item": item, "error": str(e)})
     if done:
-        _changed("ordered " + ", ".join(f"{d['qty']:g} {d['item']}" for d in done))
-    return _j({"placed": done, "errors": errors})
+        _changed("on order: " + ", ".join(f"{d['qty']:g} {d['item']}" for d in done))
+    return _j({"approved_drafts": done, "errors": errors, "status": "on order, not yet received",
+               "note": "No supplier integration: nothing was sent. Stock goes up when the delivery is recorded."})
+
+
+@tool
+def receive_delivery(item: str | None = None) -> str:
+    """The delivery arrived ("the coke delivery came", "we got the order"): every approved order
+    (or just this item's) is received and added to stock."""
+    done = ledger.receive_orders(_item_name(item) if item else None)
+    if not done:
+        return _j({"received": [], "note": "Nothing was on order" + (f" for {item}" if item else "") + "."})
+    _changed("received " + ", ".join(f"{d['qty']:g} {d['item']}" for d in done))
+    return _j({"received": done})
 
 
 @tool
 def correct_grab(grab_id: str, action: str, item: str, qty_label: str) -> str:
     """Owner correction of one camera grab, e.g. "that was a put-back" or "that was cheese, not
-    dough". action: took | put_back | touched. qty_label: pinch | handful | whole_container.
+    dough". action: took | put_back | touched. qty_label: pinch | handful | whole_container for
+    bulk food, or "1" | "2" | "3" for cans/bottles (exact count).
     The ledger is updated immediately and the variance changes."""
     from app.contracts import GrabConfirm
     try:
-        row = ledger.confirm_grab(grab_id, GrabConfirm(action=action, item=item, qty_label=qty_label))
+        row = ledger.confirm_grab(grab_id, GrabConfirm(action=action, item=_item_name(item), qty_label=qty_label))
     except (KeyError, ValueError) as e:
         return _j({"error": str(e)})
+    _changed(f"grab corrected: {action} {qty_label} {item}")
     return _j({"grab_id": row.grab_id, "action": row.action, "item": row.item,
                "qty_label": row.qty_label, "status": row.status})
 
@@ -212,5 +228,5 @@ def get_bank_statement(days: int = 7) -> str:
     return _j(bank.statement(days))
 
 
-ALL_TOOLS = [get_stock, get_variance, list_grabs, d1_look, send_text, place_order, place_orders, correct_grab, set_par,
-             record_count, reorder_plan, show_sheet, get_bank_statement]
+ALL_TOOLS = [get_stock, get_variance, list_grabs, d1_look, send_text, place_order, place_orders, receive_delivery,
+             correct_grab, set_par, record_count, reorder_plan, show_sheet, get_bank_statement]

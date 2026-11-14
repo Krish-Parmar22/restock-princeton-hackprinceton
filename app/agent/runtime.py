@@ -105,8 +105,8 @@ def _approval_prompt(reqs: list[dict]) -> str:
                 lines.append(f"- {name.replace('_', ' ')}: {q}")
         if not orders:
             lines.append(f"- {r.get('name', 'this')}")
-    head = "Reorder plan:" if len(lines) > 1 else "Order:"
-    tail = f"Total ${total:,.2f}. Approve? Reply yes or no." if total else "Approve? Reply yes or no."
+    head = "Reorder plan:" if len(lines) > 1 else "Reorder:"
+    tail = (f"Total ${total:,.2f}. Approve? Reply yes or no." if total else "Approve? Reply yes or no.")
     return "\n".join([head, *lines, tail])
 
 

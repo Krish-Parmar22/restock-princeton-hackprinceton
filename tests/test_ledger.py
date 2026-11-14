@@ -96,9 +96,28 @@ def test_inventory_on_hand(db):
     assert inv["pepperoni"].used_today == 2.0
     assert inv["pepperoni"].below_par is False   # 10 is not < 10
     oid = api.draft_order("pepperoni", 5)
-    api.set_order_status(oid, "approved")        # approval records a purchase
+    api.set_order_status(oid, "approved")        # approved = ON ORDER, not on the shelf
+    later = lambda: {r.item: r for r in api.get_inventory(datetime.now(TZ) + timedelta(minutes=1))}
+    assert later()["pepperoni"].on_hand == 10.0 and later()["pepperoni"].on_order == 5.0
+    api.set_order_status(oid, "approved")        # a repeated yes changes nothing
+    assert later()["pepperoni"].on_order == 5.0
+    assert [r["qty"] for r in api.receive_orders("pepperoni")] == [5.0]   # the delivery came
+    assert later()["pepperoni"].on_hand == 15.0 and later()["pepperoni"].on_order == 0.0
+    assert api.receive_orders("pepperoni") == []                       # no double receipt
+
+
+def test_approve_twelve_with_five_on_hand(db):
+    """The review's pass condition: 5 on hand, approve 12 -> 5 on hand + 12 on order; receive -> 17."""
+    with connect(URL) as conn:
+        conn.execute("INSERT INTO counts (ts, item_id, qty) SELECT now(), id, 5 FROM items WHERE name = 'cheese'")
+    oid = api.draft_order("cheese", 12)
+    api.set_order_status(oid, "approved")
     inv = {r.item: r for r in api.get_inventory(datetime.now(TZ) + timedelta(minutes=1))}
-    assert inv["pepperoni"].on_hand == 15.0
+    assert (inv["cheese"].on_hand, inv["cheese"].on_order) == (5.0, 12.0)
+    assert not any(p["item"] == "cheese" for p in api.reorder_plan()), "already on order: no duplicate reorder"
+    api.receive_orders()
+    inv = {r.item: r for r in api.get_inventory(datetime.now(TZ) + timedelta(minutes=1))}
+    assert (inv["cheese"].on_hand, inv["cheese"].on_order) == (17.0, 0.0)
 
 
 def test_order_reject_no_purchase(db):
@@ -149,6 +168,11 @@ def test_approve_twice_buys_once(db):
     api.set_order_status(oid, "approved")          # idempotent
     with pytest.raises(ValueError):
         api.set_order_status(oid, "rejected")      # can't un-approve
+    with connect(URL) as conn:
+        assert conn.execute("SELECT count(*) n FROM purchases").fetchone()["n"] == 0, "approval isn't a delivery"
+    api.receive_orders()
+    api.receive_orders()                           # a second "delivery came" text
+    api.set_order_status(oid, "received")          # idempotent
     with connect(URL) as conn:
         assert conn.execute("SELECT count(*) n FROM purchases").fetchone()["n"] == 1
 

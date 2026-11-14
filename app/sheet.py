@@ -59,9 +59,9 @@ def refresh(changed: str | None = None) -> dict:
 
 def render_png(inv: list[dict], orders: list[dict], note: str, changed: str | None = None) -> str:
     rows = sorted(inv, key=lambda r: (not r["below_par"], r["item"]))
-    cols = [("Item", 230), ("On hand", 120), ("Par", 90), ("Order", 100), ("Status", 130)]
+    cols = [("Item", 220), ("On hand", 120), ("On order", 110), ("Par", 70), ("Order", 90), ("Status", 140)]
     pad, rh, head = 28, 46, 120
-    recent = [o for o in orders if o["status"] == "approved"][:3]
+    recent = [o for o in orders if o["status"] in ("approved", "received")][:3]
     w = pad * 2 + sum(c[1] for c in cols)
     h = head + rh * (len(rows) + 1) + (40 + 34 * len(recent) if recent else 0) + pad
     img = Image.new("RGB", (w, h), "white")
@@ -77,13 +77,15 @@ def render_png(inv: list[dict], orders: list[dict], note: str, changed: str | No
         x += cw
     y += rh
     for r in rows:
-        low = r["on_hand"] < r["par"]
+        oo = r.get("on_order", 0) or 0
+        low = r["on_hand"] + oo < r["par"]          # same rule as reorder_plan + the Excel formula
         hit = changed and r["item"] in changed
         fill = "#FDE2E1" if low else ("#E7F5EC" if hit else "white")
         d.rectangle([pad, y, w - pad, y + rh], fill=fill, outline="#D1D5DB")
-        order = math.ceil(2 * r["par"] - r["on_hand"]) if low else 0   # same rule as reorder_plan + Excel
-        vals = [r["item"].replace("_", " ").title(), f"{_fmt(r['on_hand'])} {r['unit']}", _fmt(r["par"]),
-                _fmt(order) if order else "", "REORDER" if low else "OK"]
+        order = math.ceil(2 * r["par"] - r["on_hand"] - oo) if low else 0
+        status = "REORDER" if low else ("ON ORDER" if r["on_hand"] < r["par"] else "OK")
+        vals = [r["item"].replace("_", " ").title(), f"{_fmt(r['on_hand'])} {r['unit']}", _fmt(oo) if oo else "",
+                _fmt(r["par"]), _fmt(order) if order else "", status]
         x = pad
         for (_, cw), v in zip(cols, vals):
             color = "#9B1C1C" if (low and v == "REORDER") else "#111827"
@@ -92,11 +94,12 @@ def render_png(inv: list[dict], orders: list[dict], note: str, changed: str | No
         y += rh
     if recent:
         y += 18
-        d.text((pad, y), "Recent orders", font=f_b, fill="#111827")
+        d.text((pad, y), "Recent reorders (approved drafts; stock rises on delivery)", font=f_b, fill="#111827")
         y += 30
         for o in recent:
             t = datetime.fromisoformat(o["ts"]).astimezone(TZ).strftime("%a %-I:%M %p")
-            d.text((pad, y), f"{t}   {_fmt(o['qty'])} {o['unit']} {o['item'].replace('_', ' ')}   ${o['cost']:.2f}",
+            st = "on order" if o["status"] == "approved" else "received"
+            d.text((pad, y), f"{t}   {_fmt(o['qty'])} {o['unit']} {o['item'].replace('_', ' ')}   ${o['cost']:.2f}   {st}",
                    font=f_r, fill="#374151")
             y += 34
     PNG_DIR.mkdir(parents=True, exist_ok=True)

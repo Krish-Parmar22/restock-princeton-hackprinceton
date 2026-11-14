@@ -16,13 +16,15 @@ from openpyxl.utils import get_column_letter
 
 SHOP_NAME = "Daily Inventory"
 
-# (key, header, width, number format). Keys: item, unit, par, on_hand, used_today, order_qty,
+# Order rule (same as the agent's reorder_plan): if on hand + on order < par, order back up to 2x par.
+# (key, header, width, number format). Keys: item, unit, par, on_hand, on_order, used_today, order_qty,
 # unit_cost, order_cost, status. order_qty / order_cost / status are formulas.
 COLUMNS = [
     ("item", "Item", 18, None),
     ("unit", "Unit", 8, None),
     ("par", "Par", 8, "0.##"),
     ("on_hand", "On Hand", 10, "0.##"),
+    ("on_order", "On Order", 10, "0.##"),
     ("used_today", "Used Today", 11, "0.##"),
     ("order_qty", "Order Qty", 10, "0"),
     ("unit_cost", "Unit Cost", 10, '"$"#,##0.00'),
@@ -65,7 +67,7 @@ def build_workbook(inventory: list[dict], day: date, grabs: list[dict] | None = 
         ws.column_dimensions[get_column_letter(i)].width = width
     ws.freeze_panes = ws.cell(row=hdr + 1, column=1)
 
-    par, on_hand, qty, cost = _col("par"), _col("on_hand"), _col("order_qty"), _col("unit_cost")
+    par, on_hand, qty, cost, onord = _col("par"), _col("on_hand"), _col("order_qty"), _col("unit_cost"), _col("on_order")
     first = hdr + 1
     rows = sorted(inventory, key=lambda r: r["item"])
     for r, row in enumerate(rows, start=first):
@@ -75,10 +77,11 @@ def build_workbook(inventory: list[dict], day: date, grabs: list[dict] | None = 
             "par": row["par"],
             "on_hand": row["on_hand"],
             "used_today": row["used_today"],
+            "on_order": row.get("on_order", 0),
             "unit_cost": row["unit_cost"],
-            "order_qty": f"=IF({on_hand}{r}<{par}{r},ROUNDUP(2*{par}{r}-{on_hand}{r},0),0)",  # back up to 2x par
+            "order_qty": f"=IF({on_hand}{r}+{onord}{r}<{par}{r},ROUNDUP(2*{par}{r}-{on_hand}{r}-{onord}{r},0),0)",
             "order_cost": f"={qty}{r}*{cost}{r}",
-            "status": f'=IF({on_hand}{r}<{par}{r},"REORDER","OK")',
+            "status": f'=IF({on_hand}{r}+{onord}{r}<{par}{r},"REORDER",IF({on_hand}{r}<{par}{r},"ON ORDER","OK"))',
         }
         for c, (key, _, _, fmt) in enumerate(COLUMNS, start=1):
             cell = ws.cell(row=r, column=c, value=values[key])

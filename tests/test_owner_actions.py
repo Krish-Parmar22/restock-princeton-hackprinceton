@@ -56,8 +56,8 @@ def test_count_by_text_sets_on_hand_and_marks_the_sheet(db):
 
 def test_reorder_plan_tops_up_to_twice_par(db):
     plan = json.loads(reorder_plan.invoke({}))
-    assert plan["items"] == [{"item": "coke", "unit": "each", "on_hand": 4.0, "par": 6.0, "order_qty": 8,
-                              "unit_cost": 1.0, "cost": 8.0}]
+    assert plan["items"] == [{"item": "coke", "unit": "each", "on_hand": 4.0, "on_order": 0.0, "par": 6.0,
+                              "order_qty": 8, "unit_cost": 1.0, "cost": 8.0}]
     assert plan["total_cost"] == 8.0
 
 

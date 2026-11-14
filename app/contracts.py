@@ -15,7 +15,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 Action = Literal["took", "put_back", "touched"]
-QtyLabel = Literal["pinch", "handful", "whole_container"]
+QtyLabel = Literal["pinch", "handful", "whole_container", "1", "2", "3", "more"]  # numbers: discrete items (cans)
 GrabStatus = Literal["logged", "flagged", "confirmed"]
 
 
@@ -94,6 +94,8 @@ class InventoryRow(BaseModel):
     used_today: float
     unit_cost: float
     below_par: bool
+    on_order: float = 0.0          # approved reorders not yet received (NOT on the shelf)
+    unreviewed: int = 0            # flagged camera grabs today that could still change on_hand
 
 
 class VarianceRow(BaseModel):

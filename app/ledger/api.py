@@ -102,3 +102,8 @@ def list_orders(limit: int = 20) -> list[dict]:
 def reorder_plan() -> list[dict]:
     from app.ledger import impl
     return impl.reorder_plan()
+
+
+def receive_orders(item: str | None = None) -> list[dict]:
+    from app.ledger import impl
+    return impl.receive_orders(item)
