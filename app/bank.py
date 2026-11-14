@@ -3,8 +3,8 @@
 Money in:  daily card deposits = register sales x menu prices, less card fees.
 Money out: supplier payments (deliveries + agent orders, from `purchases`), plus the fixed
            bills a small pizza shop has (rent, payroll, utilities, internet).
-Demo data: the account number, opening balance and fixed bills are made up. Swap in a real feed
-(e.g. Capital One's Nessie API) behind statement() without touching the agent.
+Demo data: the account number, opening balance and fixed bills are made up. A real bank feed can
+replace statement() without touching the agent.
 """
 from __future__ import annotations
 
