@@ -1,6 +1,6 @@
 # photon-bridge
 
-The owner's iMessage ⇄ Photon (`spectrum-ts`) ⇄ agent API on `:8000`. Contract: `docs/arnav-shah.md`.
+The owner's iMessage ⇄ **Photon 2.0** (`api.photon.codes/v1`, `src/photon2.ts`) ⇄ agent API on `:8000`. A `pho_prj_…` project ID selects Photon 2.0 automatically; `npm run dev` still uses the offline terminal provider. Contract: `docs/arnav-shah.md`.
 
 ```
 owner's phone ──iMessage──▶ Photon ──▶ bridge ──POST /inbound──▶ app/ (agent)
@@ -12,7 +12,7 @@ owner's phone ◀─────────── Photon ◀── bridge ◀�
 cd photon-bridge
 npm install
 npm run dev          # terminal provider: chat in this terminal, no Photon account needed
-cp .env.example .env # then fill SPECTRUM_PROJECT_ID / SPECTRUM_PROJECT_SECRET
+cp .env.example .env # then fill PHOTON_PROJECT_ID (pho_prj_…) / PHOTON_API_KEY
 npm start            # live on the Photon iMessage line
 npm test             # 16 offline tests
 ```
@@ -35,6 +35,6 @@ Needs Node 22+. The agent API must be up on `API_URL` (`uv run uvicorn app.api.s
 `chat_id` is the Photon space id, which is stable per owner and is the agent's memory thread.
 
 ## Photon setup checklist
-1. Sign up at photon.codes/beta and make a project. Copy the project id and secret from **Settings** into `.env`.
+1. In app.beta.photon.codes: copy the **Project ID** (`pho_prj_…`) from Settings and create an API key (project:read + project:write). Put them in `.env`. Under **iMessage**, add the owner's phone number to get an assigned line.
 2. `npm start`, then text the line from your phone. Check that the agent's answer comes back.
 3. Every demo/judge phone must text the line once before `/send` can reach it.

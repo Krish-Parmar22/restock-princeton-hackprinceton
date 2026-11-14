@@ -6,6 +6,7 @@ import { attachment, type Message, type Space, Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { terminal } from "spectrum-ts/providers/terminal";
 import { agentClient } from "./agent.js";
+import { eventWake, Photon2Transport, realApi } from "./photon2.js";
 import { type InboundEvent, type Outbox, Relay } from "./relay.js";
 import { bridgeServer } from "./server.js";
 import { ChatStore } from "./store.js";
@@ -22,6 +23,11 @@ const log = (msg: string, extra?: Record<string, unknown>) =>
   console.error(`[bridge ${new Date().toISOString()}] ${msg}${extra ? ` ${JSON.stringify(extra)}` : ""}`);
 
 async function main() {
+  // Photon 2.0 (the prize platform): project IDs start with pho_prj_, auth is a project API key.
+  const p2Project = env.PHOTON_PROJECT_ID ?? env.SPECTRUM_PROJECT_ID ?? "";
+  const p2Key = env.PHOTON_API_KEY ?? env.SPECTRUM_PROJECT_SECRET ?? "";
+  if (PROVIDER !== "terminal" && p2Project.startsWith("pho_prj_")) return mainPhoton2(p2Project, p2Key);
+
   const providers = PROVIDER === "terminal" ? [terminal.config()] : [imessage.config()];
   const creds =
     env.SPECTRUM_PROJECT_ID && env.SPECTRUM_PROJECT_SECRET
@@ -83,6 +89,29 @@ async function main() {
       .then((ev) => relay.inbound(ev))
       .catch((e) => log("could not read inbound message", { err: String(e) }));
   }
+}
+
+async function mainPhoton2(project: string, key: string) {
+  if (!key) throw new Error("Set PHOTON_API_KEY (Photon 2.0 dashboard > API keys, with project:read + project:write)");
+  const transport = new Photon2Transport({ api: realApi(project, key), dataDir: DATA_DIR, log });
+  const store = new ChatStore(join(DATA_DIR, "chats.json"));
+  const relay = new Relay({ store, outbox: transport.outbox, callAgent: agentClient(API_URL), log });
+  const onInbound = (ev: InboundEvent) => {
+    relay.inbound(ev).catch((e) => log("relay failed", { err: String(e) }));
+  };
+  bridgeServer(relay, store, () => ({ provider: "photon2", api: API_URL, chats: store.all().length })).listen(PORT, () =>
+    log(`listening on :${PORT}`, { provider: "photon2", project, api: API_URL }),
+  );
+  transport.start(onInbound);
+  const stopEvents = await eventWake(project, key, () => void transport.poll(onInbound), log);
+  const shutdown = () => {
+    log("shutting down");
+    transport.stop();
+    stopEvents();
+    process.exit(0);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
 
 /** Flatten a Photon message (text, photo, album, reply) into text + saved image paths. */
