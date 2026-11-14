@@ -229,9 +229,10 @@ def test_5_below_par_alert_reaches_the_bridge(live):
     uploader.BASE_URL = live["base"]
     assert uploader.deliver(str(dup)) == "sent"
     for _ in range(90):
-        if any("pepperoni" in s["text"] for s in MockBridge.sent):
+        if len({s["chat_id"] for s in MockBridge.sent if "pepperoni" in s["text"]}) == 4:
             break
         time.sleep(1)
     print(f"\nbridge received: {MockBridge.sent}")
     alerts = [s for s in MockBridge.sent if "pepperoni" in s["text"]]
-    assert alerts and {a["chat_id"] for a in alerts} <= {f"live-owner-{i}" for i in range(4)}
+    assert {a["chat_id"] for a in alerts} == {f"live-owner-{i}" for i in range(4)}, "every owner chat gets it"
+    assert len(alerts) == 4, "exactly once each (cooldown is per chat)"

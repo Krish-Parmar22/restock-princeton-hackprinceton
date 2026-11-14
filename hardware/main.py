@@ -173,7 +173,9 @@ def main():
         if sleep_time > 0:
             time.sleep(sleep_time)
 
-    # cleanup
+    # cleanup: finalize grabs still inside their merge window so nothing is lost on Ctrl+C
+    if pipe:
+        grab_count += len(pipe.flush())
     print(f"\n[main] stopped. {frame_num} frames, {grab_count} grabs.")
     cap.release()
     if recorder:

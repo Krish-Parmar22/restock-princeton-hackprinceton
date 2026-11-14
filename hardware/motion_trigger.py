@@ -34,11 +34,22 @@ class MotionTrigger:
         detect_shadows: bool = True, # MOG2 shadow detection (marks shadows as gray, not white)
         history: int = 200,          # MOG2 background history (frames)
         var_threshold: float = 40,   # MOG2 variance threshold (higher = less sensitive)
+        diff_threshold: int = 25,    # brightness change (0-255) that counts as movement
+        min_diff_pixels: float = 0.004, # fraction of the zone that must be moving
+        diff_lag: int = 4,           # compare to the frame this many frames back (~0.27 s at 15 fps)
+        active_learning_rate: float = 0.0005,  # MOG2 learning while a grab is active (auto when idle)
+        static_timeout: float = 6.0, # end a grab after this long with no movement, even if the
+                                     # zone still differs from the background (e.g. a resting hand)
     ):
         self.min_pixels = min_pixels
         self.min_contour_area = min_contour_area
         self.min_duration = min_duration
         self.settle_time = settle_time
+        self.diff_threshold = diff_threshold
+        self.min_diff_pixels = min_diff_pixels
+        self._grays = __import__("collections").deque(maxlen=diff_lag + 1)
+        self.static_timeout = static_timeout
+        self.active_learning_rate = active_learning_rate
 
         # background subtractor — adapts to gradual lighting changes
         self.bg_sub = cv2.createBackgroundSubtractorMOG2(
@@ -71,7 +82,11 @@ class MotionTrigger:
             timestamp = time.time()
 
         # MOG2 foreground mask: 255=foreground, 127=shadow, 0=background
-        fg_mask = self.bg_sub.apply(frame)
+        # While a grab is in progress, learn the background very slowly: auto-rate MOG2 absorbed a
+        # hand pausing in the bin within ~1.3 s (test on realistic frames, Nov 14), ending the grab
+        # with the hand still there. Idle: normal adaptation (lighting drift, a restocked bin).
+        any_active = any(z.active for z in getattr(self, "zones", []))
+        fg_mask = self.bg_sub.apply(frame, learningRate=self.active_learning_rate if any_active else -1)
 
         # keep only definite foreground (drop shadows)
         _, fg_mask = cv2.threshold(fg_mask, 200, 255, cv2.THRESH_BINARY)
@@ -79,6 +94,20 @@ class MotionTrigger:
         # morphological open (remove small noise) then close (fill small holes)
         fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, self._kernel)
         fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, self._kernel)
+
+        # frame-to-frame movement. MOG2 alone fails two ways (found on realistic frames, Nov 14):
+        # it LEARNS a hand that stays in the bin (~4 s), ending the grab while the hand is still
+        # there; and a bin that permanently changed after a take stays "foreground" until learned.
+        # So: a grab STARTS on MOG2 foreground + movement, CONTINUES while there's movement,
+        # and ENDS when the zone has stopped moving for settle_time.
+        # (compared to a frame ~0.27 s back: a smoothly moving hand shifts only a few pixels per frame)
+        gray = cv2.GaussianBlur(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (5, 5), 0)
+        if not self._grays or self._grays[0].shape != gray.shape:
+            self._grays.clear()
+            move_mask = np.zeros_like(gray)
+        else:
+            _, move_mask = cv2.threshold(cv2.absdiff(gray, self._grays[0]), self.diff_threshold, 255, cv2.THRESH_BINARY)
+        self._grays.append(gray)
 
         events = []
 
@@ -94,7 +123,11 @@ class MotionTrigger:
 
             zone_area = cv2.countNonZero(zone.mask)
             motion_ratio = significant_area / max(zone_area, 1)
-            has_motion = motion_ratio > self.min_pixels
+            moving = cv2.countNonZero(cv2.bitwise_and(move_mask, zone.mask)) / max(zone_area, 1) > self.min_diff_pixels
+            if zone.active:
+                has_motion = moving                                        # continue while it moves
+            else:
+                has_motion = motion_ratio > self.min_pixels and moving     # start: new + moving
 
             if has_motion:
                 zone.last_motion = timestamp
@@ -102,12 +135,17 @@ class MotionTrigger:
                     zone.active = True
                     zone.motion_start = timestamp
                     zone.triggered = False
-                elif not zone.triggered and (timestamp - zone.motion_start) >= self.min_duration:
+                elif (not zone.triggered and (timestamp - zone.motion_start) >= self.min_duration
+                      and motion_ratio > self.min_pixels):  # still something NEW there (flash echoes are not)
                     zone.triggered = True
 
             elif zone.active:
-                # no motion — check settle
-                if (timestamp - zone.last_motion) >= self.settle_time:
+                # no movement: end once settled AND the zone looks like background again (a paused
+                # hand is still foreground, so it doesn't end the grab early). If the zone stays
+                # different (e.g. bin permanently changed by the take, until MOG2 learns it), end
+                # anyway after static_timeout.
+                still = timestamp - zone.last_motion
+                if still >= self.settle_time and (motion_ratio <= self.min_pixels or still >= self.static_timeout):
                     if zone.triggered:
                         events.append({
                             "zone": zone.name,

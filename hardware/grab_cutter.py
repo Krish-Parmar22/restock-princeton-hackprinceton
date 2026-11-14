@@ -65,13 +65,13 @@ class GrabCutter:
         folder = os.path.join(self.output_dir, f".tmp-{grab_id}")
         os.makedirs(folder, exist_ok=True)
 
-        cv2.imwrite(os.path.join(folder, "before.jpg"), before_frame)
-        cv2.imwrite(os.path.join(folder, "after.jpg"), after_frame)
+        ok = cv2.imwrite(os.path.join(folder, "before.jpg"), before_frame)
+        ok &= cv2.imwrite(os.path.join(folder, "after.jpg"), after_frame)
 
         frame_times = []
         for i, (t, f) in enumerate(during_frames):
             fname = f"during_{i + 1:02d}.jpg"
-            cv2.imwrite(os.path.join(folder, fname), f)
+            ok &= cv2.imwrite(os.path.join(folder, fname), f)
             frame_times.append(t)
 
         meta = {
@@ -83,6 +83,11 @@ class GrabCutter:
             "frame_times": frame_times,
             "source": self.source,
         }
+        if not ok:   # disk full / bad frame: never publish a package with missing images
+            import shutil
+            shutil.rmtree(folder, ignore_errors=True)
+            print(f"[grab] {grab_id}: FAILED to write images, package dropped (check disk space)")
+            return None
         if zone_polygon:
             meta["zone_polygon"] = [[int(x), int(y)] for x, y in zone_polygon]  # full-frame pixels
         with open(os.path.join(folder, "meta.json"), "w") as f:

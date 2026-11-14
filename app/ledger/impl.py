@@ -268,12 +268,14 @@ def known_chats() -> list[str]:
         return [r["chat_id"] for r in conn.execute("SELECT chat_id FROM chats ORDER BY last_seen DESC").fetchall()]
 
 
-def recently_alerted(kind: str, item: str, hours: float) -> bool:
+def recently_alerted(kind: str, item: str, hours: float, chat_id: str | None = None) -> bool:
+    """Cooldown per item AND chat: one chat's successful alert must not silence another's retry."""
     with _conn() as conn:
         return conn.execute(
             """SELECT 1 FROM alerts a JOIN items i ON i.id = a.item_id
-                WHERE a.kind = %s AND i.name = %s AND a.ts > now() - make_interval(secs => %s) LIMIT 1""",
-            (kind, item, hours * 3600)).fetchone() is not None
+                WHERE a.kind = %s AND i.name = %s AND a.ts > now() - make_interval(secs => %s)
+                  AND (%s::text IS NULL OR a.chat_id = %s) LIMIT 1""",
+            (kind, item, hours * 3600, chat_id, chat_id)).fetchone() is not None
 
 
 def record_alert(kind: str, item: str, chat_id: str, text: str) -> None:

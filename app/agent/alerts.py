@@ -39,10 +39,12 @@ def check_and_alert(send=None) -> list[dict]:
         return []
     sent = []
     for row in ledger.get_inventory():
-        if not row.below_par or ledger.recently_alerted("below_par", row.item, ALERT_COOLDOWN_H):
+        if not row.below_par:
             continue
         text = below_par_text(row)
         for chat in chats:
+            if ledger.recently_alerted("below_par", row.item, ALERT_COOLDOWN_H, chat_id=chat):
+                continue
             ok, err = send(SendRequest(chat_id=chat, text=text))
             ledger.record_message(chat, text, None, "sent" if ok else "blocked",
                                   [] if ok else [{"claim": "bridge refused", "error": err}])

@@ -106,7 +106,7 @@ def _numbers(text: str) -> list[float]:
     return [float(n.replace(",", "")) for n in _NUM.findall(text)]
 
 
-def numbers_check(claim: str, evidence: str) -> bool | None:
+def numbers_check(claim: str, evidence: str) -> bool | str | None:
     """Deterministic: every number in the claim must appear in the evidence (to rounding).
     None when the claim has no numbers. d1 is weak at arithmetic ($92.7 vs $9.27 scored 0.899 in
     calibration, docs/guard-calibration.md), so numbers are never left to d1 alone."""
@@ -118,18 +118,25 @@ def numbers_check(claim: str, evidence: str) -> bool | None:
     def close(n: float, e: float) -> bool:
         return abs(n - e) <= max(0.011, 0.005 * abs(e)) or (n == int(n) and abs(n - round(e)) < 1e-9)
 
-    # one step of arithmetic, but only between numbers in the SAME record (one JSON object, e.g. an
-    # item's on_hand and par): "8.75 lb below par" = 50 - 41.25 (blocked live on Nov 14 without
-    # this). Pairs across the whole evidence let a wrong "$92.7" through by coincidence.
+    # One step of arithmetic, but only NAMED, meaningful differences inside one record:
+    # par - on_hand ("8.75 lb below par", blocked live Nov 14 without this) and actual - theoretical.
+    # Any-pair differences let "$8.75 per lb" through (Codex, Nov 14); cross-record sums let "$92.7".
     derived = set()
     for rec in re.findall(r"\{[^{}]*\}", evidence):
-        vals = _numbers(rec)
-        derived |= {abs(a - b) for i, a in enumerate(vals) for b in vals[i + 1:]}  # gaps only: sums let "$92.7" through
+        try:
+            obj = json.loads(rec)
+        except ValueError:
+            continue
+        for a, b in (("par", "on_hand"), ("actual", "theoretical")):
+            if isinstance(obj.get(a), (int, float)) and isinstance(obj.get(b), (int, float)):
+                derived.add(abs(obj[a] - obj[b]))
 
-    def ok(n: float) -> bool:
-        return any(close(n, e) for e in pool) or any(close(n, d) for d in derived)
-
-    return all(ok(n) for n in nums)
+    direct = [any(close(n, e) for e in pool) for n in nums]
+    if all(direct):
+        return True
+    if all(d or any(close(n, x) for x in derived) for n, d in zip(nums, direct)):
+        return "derived"   # plausible arithmetic: not blocked, but not boosted either (d1 judges meaning)
+    return False
 
 
 def score_message(text: str, state: dict, client: D1Client) -> tuple[float, list[dict]]:
@@ -153,7 +160,7 @@ def score_message(text: str, state: dict, client: D1Client) -> tuple[float, list
         if nums is False:
             final = 0.0                       # a number not in the evidence: block, whatever d1 says
         elif nums is True and d1_score >= NUM_TRUST_FLOOR:
-            final = max(d1_score, 0.9)        # every number verified in code, d1 not strongly against
+            final = max(d1_score, 0.9)        # every number appears in the evidence, d1 not strongly against
         else:
             final = d1_score
         scored.append({"claim": c, "score": round(final, 4), "d1": round(d1_score, 4), "numbers_ok": nums})

@@ -70,3 +70,18 @@ def test_correct_grab_tool_updates_ledger(db):
     after = next(v for v in api.get_variance(t.date(), t.date()) if v.item == "pepperoni").actual
     assert round(after - before, 2) == -0.5                     # took 0.25 -> put back 0.25
     assert "error" in correct_grab.invoke({"grab_id": "nope", "action": "took", "item": "pepperoni", "qty_label": "pinch"})
+
+
+def test_cooldown_is_per_chat_so_a_failed_chat_still_gets_retried(db):
+    api.remember_chat("owner-a", None)
+    api.remember_chat("owner-b", None)
+    tries = []
+
+    def flaky(req):
+        tries.append(req.chat_id)
+        return (req.chat_id == "owner-a", None if req.chat_id == "owner-a" else "not reachable")
+
+    alerts.check_and_alert(flaky)                       # a succeeds, b fails
+    tries.clear()
+    alerts.check_and_alert(lambda req: (tries.append(req.chat_id) or True, None))
+    assert tries == ["owner-b"], "b must be retried; a is in cooldown"

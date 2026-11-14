@@ -79,9 +79,9 @@ def known_chats() -> list[str]:
     return impl.known_chats()
 
 
-def recently_alerted(kind: str, item: str, hours: float = 12) -> bool:
+def recently_alerted(kind: str, item: str, hours: float = 12, chat_id: str | None = None) -> bool:
     from app.ledger import impl
-    return impl.recently_alerted(kind, item, hours)
+    return impl.recently_alerted(kind, item, hours, chat_id)
 
 
 def record_alert(kind: str, item: str, chat_id: str, text: str) -> None:

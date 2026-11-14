@@ -86,3 +86,32 @@ def test_real_cutter_and_uploader_deliver_to_real_api(laptop, tmp_path):
     assert pkg.meta.zone == "pepperoni" and pkg.meta.zone_polygon == poly
     assert pkg.meta.t_start.tzinfo is not None              # epoch seconds -> UTC-aware
     assert 1 <= len(pkg.during) <= 6
+
+
+def test_upload_worker_holds_grabs_while_laptop_is_down_then_delivers(laptop, tmp_path, monkeypatch):
+    """The real UploadWorker thread (what main.py runs): laptop unreachable -> grab stays pending;
+    laptop back -> delivered without anyone touching it."""
+    import uploader
+    from grab_cutter import GrabCutter
+
+    url, dest = laptop
+    pi_out = tmp_path / "pi_grabs"
+    t0 = time.time()
+    frames = [(t0 + i * 0.1, np.full((720, 1280, 3), i * 7 % 255, np.uint8)) for i in range(-20, 50)]
+    folder = GrabCutter(output_dir=str(pi_out), source="webcam").cut(
+        "cheese", t0, t0 + 3.0, _Buffer(frames), zone_polygon=[[0, 0], [99, 0], [99, 99]], camera_id="w")
+    monkeypatch.setattr(uploader, "MAX_BACKOFF", 0.2)
+    uploader.BASE_URL, uploader.UPLOAD_TOKEN = "http://127.0.0.1:9", "tok"     # laptop "down"
+    w = uploader.UploadWorker(str(pi_out), poll=0.05)
+    w.start()
+    time.sleep(0.6)
+    assert uploader.pending(str(pi_out)) == [folder]                         # held, not dropped
+    uploader.BASE_URL = url                                                   # laptop back
+    for _ in range(100):
+        if (dest / Path(folder).name).exists():
+            break
+        time.sleep(0.05)
+    w.stop_flag = True
+    w.nudge()
+    assert (dest / Path(folder).name / "meta.json").exists()
+    assert uploader.pending(str(pi_out)) == []

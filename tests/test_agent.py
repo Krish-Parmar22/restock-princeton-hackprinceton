@@ -218,5 +218,16 @@ def test_guard_accepts_one_step_arithmetic_on_evidence():
     """Live E2E (Nov 14): 'Pepperoni is 8.75 lb below par' (50 - 41.25) was wrongly blocked."""
     from app.agent.guard import numbers_check
     ev = '{"on_hand": 41.25, "par": 50.0}'
-    assert numbers_check("Pepperoni is 8.75 lb below par.", ev) is True
+    assert numbers_check("Pepperoni is 8.75 lb below par.", ev) == "derived"   # allowed, not boosted
     assert numbers_check("Pepperoni is 18.75 lb below par.", ev) is False
+
+
+def test_derived_numbers_are_not_boosted(fake_ledger):
+    """Codex (Nov 14): '$8.75 per lb' equals par - on_hand but is a wrong PRICE. Derived numbers
+    are never boosted to 0.9; d1 alone decides."""
+    from langchain_core.messages import HumanMessage, ToolMessage
+    from app.agent.guard import score_message
+    state = {"messages": [HumanMessage("q"), ToolMessage('{"on_hand": 41.25, "par": 50.0, "unit_cost": 4.5}',
+                                                         tool_call_id="1", name="get_stock")]}
+    meh = KeywordD1(bad=(), meh=("costs",))          # d1 says 0.7 for the price claim
+    assert score_message("Pepperoni costs $8.75 per lb right now.", state, meh)[0] == 0.7

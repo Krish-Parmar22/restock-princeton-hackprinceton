@@ -69,8 +69,8 @@ def send_package(grab_dir: str) -> str:
         return "sent"
     if resp.status_code == 409:
         return "duplicate"   # an earlier attempt landed: success
-    if resp.status_code == 400:
-        log.error("[upload] %s rejected: %s", os.path.basename(grab_dir), resp.text[:300])
+    if resp.status_code in (400, 413):   # the package itself is bad / too big: retrying won't help
+        log.error("[upload] %s rejected (%s): %s", os.path.basename(grab_dir), resp.status_code, resp.text[:300])
         return "rejected"
     log.warning("[upload] %s: HTTP %s, will retry", os.path.basename(grab_dir), resp.status_code)
     return "retry"
