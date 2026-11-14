@@ -21,12 +21,13 @@ from urllib.parse import parse_qs, urlparse
 import cv2
 import numpy as np
 
-ITEMS = ["pepperoni", "cheese", "dough", "sauce"]
+ITEMS = ["pepperoni", "cheese", "dough", "sauce"]   # default; main.py passes the live list from the API
 
 
 class StreamState:
-    def __init__(self, zones: list[dict], width: int, height: int, key: str = ""):
+    def __init__(self, zones: list[dict], width: int, height: int, key: str = "", items: list[str] | None = None):
         self.lock = threading.Lock()
+        self.items = list(items or ITEMS)
         self.zones = zones
         self.size = (width, height)
         self.key = key
@@ -69,8 +70,8 @@ class StreamState:
         names = set()
         for z in zones:
             name, pts = z.get("name"), z.get("points")
-            if name not in ITEMS:
-                return f"zone name must be one of {ITEMS} (got {name!r})"
+            if name not in self.items:
+                return f"zone name must be one of {self.items} (got {name!r})"
             if name in names:
                 return f"two boxes named {name}"
             names.add(name)
@@ -146,7 +147,7 @@ def serve(state: StreamState, port: int) -> ThreadingHTTPServer:
         def do_GET(self):  # noqa: N802
             path = urlparse(self.path).path
             if path == "/":
-                opts = "".join(f"<option>{i}</option>" for i in ITEMS)
+                opts = "".join(f"<option>{i}</option>" for i in state.items)
                 page = PAGE.replace("ITEM_OPTIONS", opts).replace("FRAME_W", str(state.size[0])).replace("FRAME_H", str(state.size[1]))
                 return self._send(200, page.encode(), "text/html; charset=utf-8")
             if path == "/zones":

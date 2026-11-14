@@ -129,7 +129,14 @@ def main():
     stream = None
     if args.stream_port:   # live feed + box editor in the laptop's browser (headless boards)
         from stream import StreamState, serve
-        stream = StreamState(zones, w, h, key=args.upload_token)
+        items = None
+        if args.api_url:   # box names must be inventory items: offer exactly the API's list
+            try:
+                import requests
+                items = sorted(r["item"] for r in requests.get(f"{args.api_url.rstrip('/')}/api/inventory", timeout=5).json())
+            except Exception as e:
+                print(f"[main] couldn't read items from the API ({e}); using the default list")
+        stream = StreamState(zones, w, h, key=args.upload_token, items=items)
         serve(stream, args.stream_port)
         print(f"[main] live view + box editor: http://<this-board>:{args.stream_port}"
               + ("/?key=<upload token>" if args.upload_token else ""))

@@ -1,0 +1,3 @@
+name: Grab light
+icon: 🍕
+description: Shows the inventory camera latest decision on the LED matrix (driven from the laptop over USB).
