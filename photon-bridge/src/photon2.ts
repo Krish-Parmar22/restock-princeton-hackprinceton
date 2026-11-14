@@ -296,6 +296,7 @@ export class Photon2Transport {
   }
 
   private async typing(chatId: string, on: boolean): Promise<void> {
+    if (this.warnedTyping) return; // Photon 2.0 iMessage answers 422 UNSUPPORTED_CONTENT (seen live): stop asking
     try {
       const { agentId } = this.target(chatId);
       await this.o.api.sendMessage(chatId, agentId, { type: "space.typing.update", typing: on }, randomUUID());
