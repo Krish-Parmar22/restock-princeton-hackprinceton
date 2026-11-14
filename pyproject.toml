@@ -17,6 +17,7 @@ dependencies = [
   "langchain-openai>=1.8.0",
   "ultralytics>=8.4.212",
   "clip",
+  "python-multipart>=0.0.33",
 ]
 
 [project.optional-dependencies]
