@@ -104,6 +104,7 @@ def place_order(item: str, qty: float, supplier: str | None = None) -> str:
     except (KeyError, ValueError) as e:
         return _j({"error": str(e)})
     ledger.set_order_status(oid, "approved")
+    _changed(f"ordered {qty:g} {item}")
     return _j({"order_id": oid, "item": item, "qty": qty, "status": "approved"})
 
 
@@ -126,9 +127,69 @@ def set_par(item: str, par: float) -> str:
     """Owner correction: change an ingredient's par level (the reorder line), e.g.
     "our pepperoni par is 25 lb now". Also note it in /memories/shop.md."""
     try:
-        return _j(ledger.set_par(item.lower().strip(), par))
+        out = ledger.set_par(item.lower().strip(), par)
     except (KeyError, ValueError) as e:
         return _j({"error": str(e)})
+    _changed(f"{item} par {par:g}")
+    return _j(out)
 
 
-ALL_TOOLS = [get_stock, get_variance, list_grabs, d1_look, send_text, place_order, correct_grab, set_par]
+def _changed(what: str) -> None:
+    """Note a change the owner made; the runtime refreshes the Excel sheet and texts its picture."""
+    ctx = context.current()
+    if ctx is not None:
+        ctx.sheet_changes.append(what)
+
+
+def _item_name(item: str) -> str:
+    return item.lower().strip().replace(" ", "_")
+
+
+@tool
+def record_count(item: str, qty: float) -> str:
+    """The owner counted an item, e.g. "we have 18 cokes" or "counted 12 lb of cheese".
+    Sets on-hand to exactly this number and updates the Excel sheet."""
+    try:
+        out = ledger.record_count(_item_name(item), qty)
+    except (KeyError, ValueError) as e:
+        return _j({"error": str(e)})
+    _changed(f"{out['item']} count {qty:g}")
+    return _j(out)
+
+
+@tool
+def reorder_plan() -> str:
+    """What should be ordered right now: every item below par, with the quantity that brings it
+    back to 2x par and the cost. Use these exact quantities with place_order."""
+    plan = ledger.reorder_plan()
+    return _j({"items": plan, "total_cost": round(sum(p["cost"] for p in plan), 2)})
+
+
+@tool
+def show_sheet() -> str:
+    """Text the owner a picture of the current inventory sheet (also refreshes the Excel file)."""
+    _changed("requested")
+    return _j({"ok": True, "note": "The sheet picture is attached to your reply automatically."})
+
+
+@tool
+def get_bank_statement(days: int = 7) -> str:
+    """SENSITIVE. The shop's bank account: balance, money in/out, largest payments, recent
+    transactions for the last `days` days. Needs the owner's authenticator code first: if it
+    returns locked, send the owner exactly the `say` text and nothing else."""
+    from app import secure
+    ctx = context.current()
+    chat = ctx.chat_id if ctx else None
+    if not secure.configured():
+        return _j({"locked": True, "say": "Bank info is turned off until the owner sets up an authenticator app."})
+    if not secure.is_unlocked(chat):
+        if chat:
+            secure.request_code(chat, (ctx.text if ctx and ctx.text else f"bank statement for {days} days"))
+        return _j({"locked": True,
+                   "say": "That's sensitive. Reply with the 6-digit code from your authenticator app."})
+    from app import bank
+    return _j(bank.statement(days))
+
+
+ALL_TOOLS = [get_stock, get_variance, list_grabs, d1_look, send_text, place_order, correct_grab, set_par,
+             record_count, reorder_plan, show_sheet, get_bank_statement]

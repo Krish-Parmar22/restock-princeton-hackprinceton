@@ -283,3 +283,40 @@ def record_alert(kind: str, item: str, chat_id: str, text: str) -> None:
         it = _item(conn, item)
         conn.execute("INSERT INTO alerts (kind, item_id, chat_id, text) VALUES (%s, %s, %s, %s)",
                      (kind, it["id"], chat_id, text))
+
+
+def record_count(item: str, qty: float, source: str = "owner_text") -> dict:
+    """The owner counted an item ("we have 18 cokes"): a count resets on-hand to exactly this."""
+    import math
+    if not isinstance(qty, (int, float)) or not math.isfinite(qty) or qty < 0 or qty > 100000:
+        raise ValueError(f"count must be a number between 0 and 100000, got {qty!r}")
+    with _conn() as conn:
+        it = _item(conn, item)
+        conn.execute("INSERT INTO counts (ts, item_id, qty, source) VALUES (now(), %s, %s, %s)",
+                     (it["id"], qty, source))
+    row = next(r for r in get_inventory() if r.item == item)
+    return {"item": row.item, "on_hand": row.on_hand, "par": row.par, "unit": row.unit, "below_par": row.below_par}
+
+
+def list_orders(limit: int = 20) -> list[dict]:
+    with _conn() as conn:
+        rows = conn.execute(
+            """SELECT o.id, o.ts, i.name AS item, i.unit, o.qty, i.unit_cost, o.qty * i.unit_cost AS cost,
+                      coalesce(o.supplier, '') AS supplier, o.status
+               FROM orders o JOIN items i ON i.id = o.item_id ORDER BY o.ts DESC LIMIT %s""", (limit,)).fetchall()
+    return [{"id": r["id"], "ts": r["ts"].isoformat(), "item": r["item"], "unit": r["unit"], "qty": _f(r["qty"]),
+             "unit_cost": _f(r["unit_cost"]), "cost": round(_f(r["cost"]), 2), "supplier": r["supplier"],
+             "status": r["status"]} for r in rows]
+
+
+def reorder_plan() -> list[dict]:
+    """What to order now: every item below par, topped back up to 2x par (order-up-to level),
+    whole units only. Pure arithmetic on the ledger, so the agent never invents a quantity."""
+    import math
+    out = []
+    for r in get_inventory():
+        if r.on_hand < r.par:
+            qty = math.ceil(max(0.0, 2 * r.par - r.on_hand))
+            out.append({"item": r.item, "unit": r.unit, "on_hand": r.on_hand, "par": r.par, "order_qty": qty,
+                        "unit_cost": r.unit_cost, "cost": round(qty * r.unit_cost, 2)})
+    return sorted(out, key=lambda x: -x["cost"])

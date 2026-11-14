@@ -18,6 +18,9 @@ dependencies = [
   "ultralytics>=8.4.212",
   "clip",
   "python-multipart>=0.0.33",
+  "pyotp>=2.10.0",
+  "qrcode[pil]>=8.2",
+  "openpyxl>=3.1.5",
 ]
 
 [project.optional-dependencies]

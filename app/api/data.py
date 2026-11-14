@@ -48,6 +48,24 @@ def confirm(grab_id: str, body: GrabConfirm):
         raise HTTPException(400, str(e)) from None
 
 
+@router.get("/api/orders")
+def orders(limit: int = Query(30, ge=1, le=200)):
+    return ledger.list_orders(limit)
+
+
+@router.get("/api/reorder-plan")
+def plan():
+    p = ledger.reorder_plan()
+    return {"items": p, "total_cost": round(sum(x["cost"] for x in p), 2)}
+
+
+@router.post("/api/reorder-plan/send")
+def send_plan(chat_id: str | None = None):
+    """The agent texts the owner today's reorder plan and asks to approve it (demo button / daily job)."""
+    from app.agent.runtime import send_reorder_plan
+    return send_reorder_plan([chat_id] if chat_id else None)
+
+
 @router.get("/api/messages", response_model=list[MessageRow])
 def messages(limit: int = Query(50, ge=1, le=500)):
     return ledger.list_messages(limit)

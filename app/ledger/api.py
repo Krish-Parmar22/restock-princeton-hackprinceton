@@ -87,3 +87,18 @@ def recently_alerted(kind: str, item: str, hours: float = 12, chat_id: str | Non
 def record_alert(kind: str, item: str, chat_id: str, text: str) -> None:
     from app.ledger import impl
     impl.record_alert(kind, item, chat_id, text)
+
+
+def record_count(item: str, qty: float, source: str = "owner_text") -> dict:
+    from app.ledger import impl
+    return impl.record_count(item, qty, source)
+
+
+def list_orders(limit: int = 20) -> list[dict]:
+    from app.ledger import impl
+    return impl.list_orders(limit)
+
+
+def reorder_plan() -> list[dict]:
+    from app.ledger import impl
+    return impl.reorder_plan()

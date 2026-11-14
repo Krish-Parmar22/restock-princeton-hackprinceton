@@ -40,7 +40,8 @@ def _col(key: str) -> str:
     return get_column_letter([c[0] for c in COLUMNS].index(key) + 1)
 
 
-def build_workbook(inventory: list[dict], day: date, grabs: list[dict] | None = None) -> Workbook:
+def build_workbook(inventory: list[dict], day: date, grabs: list[dict] | None = None,
+                   orders: list[dict] | None = None, note: str | None = None) -> Workbook:
     wb = Workbook()
     ws = wb.active
     ws.title = "Inventory"
@@ -51,7 +52,7 @@ def build_workbook(inventory: list[dict], day: date, grabs: list[dict] | None = 
     ws["A1"] = f"{SHOP_NAME} — {day.strftime('%A, %b %-d, %Y')}"
     ws["A1"].font = Font(size=14, bold=True)
     ws.merge_cells(f"A2:{last}2")
-    ws["A2"] = f"Filled automatically from the camera + register at {datetime.now().strftime('%-I:%M %p')}"
+    ws["A2"] = note or f"Filled automatically from the camera + register at {datetime.now().strftime('%-I:%M %p')}"
     ws["A2"].font = Font(size=9, italic=True, color="6B7280")
 
     hdr = 4
@@ -75,7 +76,7 @@ def build_workbook(inventory: list[dict], day: date, grabs: list[dict] | None = 
             "on_hand": row["on_hand"],
             "used_today": row["used_today"],
             "unit_cost": row["unit_cost"],
-            "order_qty": f"=ROUNDUP(MAX(0,{par}{r}-{on_hand}{r}),0)",
+            "order_qty": f"=IF({on_hand}{r}<{par}{r},ROUNDUP(2*{par}{r}-{on_hand}{r},0),0)",  # back up to 2x par
             "order_cost": f"={qty}{r}*{cost}{r}",
             "status": f'=IF({on_hand}{r}<{par}{r},"REORDER","OK")',
         }
@@ -102,6 +103,8 @@ def build_workbook(inventory: list[dict], day: date, grabs: list[dict] | None = 
         ws[f"{oc}{total}"].number_format = '"$"#,##0.00'
         ws[f"{oc}{total}"].font = Font(bold=True)
 
+    if orders is not None:
+        _orders(wb.create_sheet("Orders"), orders)
     if grabs:
         _camera_log(wb.create_sheet("Camera log"), grabs)
     ws.sheet_view.zoomScale = 120
@@ -131,7 +134,39 @@ def _camera_log(ws, grabs: list[dict]) -> None:
     ws.freeze_panes = "A2"
 
 
-def workbook_bytes(inventory: list[dict], day: date, grabs: list[dict] | None = None) -> bytes:
+def _orders(ws, orders: list[dict]) -> None:
+    """Every reorder, newest first: who approved it is the owner, by text (status approved)."""
+    headers = ["Placed", "Item", "Qty", "Unit", "Unit Cost", "Cost", "Supplier", "Status"]
+    widths = [18, 16, 8, 8, 10, 11, 16, 11]
+    for i, (h, w) in enumerate(zip(headers, widths), start=1):
+        cell = ws.cell(row=1, column=i, value=h)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = HEADER_FILL
+        cell.alignment = Alignment(horizontal="center")
+        ws.column_dimensions[get_column_letter(i)].width = w
+    for r, o in enumerate(orders, start=2):
+        t = datetime.fromisoformat(str(o["ts"]).replace("Z", "+00:00"))
+        vals = [t.strftime("%a %b %-d, %-I:%M %p"), o["item"].replace("_", " ").title(), o["qty"], o["unit"],
+                o["unit_cost"], f"=C{r}*E{r}", o.get("supplier") or "", o["status"]]
+        for c, v in enumerate(vals, start=1):
+            cell = ws.cell(row=r, column=c, value=v)
+            cell.border = GRID
+            if c in (5, 6):
+                cell.number_format = '"$"#,##0.00'
+            if o["status"] == "rejected":
+                cell.font = Font(color="9CA3AF", strike=True)
+    if orders:
+        t = len(orders) + 3
+        ws[f"A{t}"] = "Total approved"
+        ws[f"A{t}"].font = Font(bold=True)
+        ws[f"F{t}"] = f'=SUMIF(H2:H{len(orders) + 1},"approved",F2:F{len(orders) + 1})'
+        ws[f"F{t}"].number_format = '"$"#,##0.00'
+        ws[f"F{t}"].font = Font(bold=True)
+    ws.freeze_panes = "A2"
+
+
+def workbook_bytes(inventory: list[dict], day: date, grabs: list[dict] | None = None,
+                   orders: list[dict] | None = None, note: str | None = None) -> bytes:
     buf = io.BytesIO()
-    build_workbook(inventory, day, grabs).save(buf)
+    build_workbook(inventory, day, grabs, orders, note).save(buf)
     return buf.getvalue()

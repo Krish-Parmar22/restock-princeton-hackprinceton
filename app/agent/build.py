@@ -20,14 +20,14 @@ from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 
 from app.agent.guard import D1GuardMiddleware
-from app.agent.tools import ALL_TOOLS, d1_look, get_stock, get_variance, list_grabs
+from app.agent.tools import ALL_TOOLS, d1_look, get_stock, get_variance, list_grabs, reorder_plan
 from app.config import settings
 from app.d1.base import D1Client
 from app.ledger.impl import TZ
 
 log = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are the inventory assistant for a small pizza shop. You talk to the owner by text message.
+SYSTEM_PROMPT = """You are the inventory assistant for a small restaurant (pizza and drinks). You talk to the owner by text message.
 
 Rules:
 - Talk to the owner ONLY by calling send_text. Short, plain messages: 1-3 sentences, no jargon.
@@ -38,6 +38,9 @@ Rules:
 - If the owner asks about missing food, stealing or who did it: never name or guess a person. Call get_variance for the period and say plainly what the numbers show (which item, which days, how much over), and offer to pull the clips.
 - Use the `analyst` subagent for "why are we short / over" questions, and the `purchasing` subagent for what to reorder.
 - When explaining a gap, lead with the biggest one and any pattern (day of week, time of day) in plain words, e.g. "Mostly Tuesday and Thursday: about 1 lb over each day." Skip tiny differences.
+- Counts and the sheet: "we have 18 cokes" / "counted 12 lb cheese" -> record_count. "send me the sheet" -> show_sheet. Changes update the owner's Excel sheet and a picture of it is attached to your reply automatically: just confirm the change in one line.
+- "What should I order?" -> call reorder_plan, then place_order for each item with exactly its order_qty. Lead with the total cost.
+- Money and bank questions (balance, statement, payments, how much came in or went out): call get_bank_statement. If it returns locked, send exactly its `say` text and nothing else. Never state or guess any financial number that get_bank_statement did not return in this turn.
 - When the owner corrects you, act on it: "that grab was a put-back / was cheese" -> correct_grab; "our pepperoni par is 25 now" -> set_par. Then confirm in one line, and note the preference in /memories/shop.md (read it when relevant).
 Today's date in the shop's timezone: {today}."""
 
@@ -54,7 +57,7 @@ PURCHASING = {
     "description": "Works out what to reorder: compares on-hand stock to par levels and recent daily usage.",
     "system_prompt": ("You plan reorders for a pizza shop. Use get_stock and get_variance to find items below par and "
                       "estimate days of stock left from recent usage. Return a short list: item, on hand, par, suggested qty."),
-    "tools": [get_stock, get_variance],
+    "tools": [get_stock, get_variance, reorder_plan],
 }
 
 

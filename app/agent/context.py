@@ -16,6 +16,8 @@ class RunContext:
     chat_id: str | None
     inbound: bool                     # True: collect replies; False: push via bridge
     outbox: list[dict] = field(default_factory=list)  # [{"text":..., "images": [...]}]
+    text: str = ""                    # the owner's message this run is answering
+    sheet_changes: list[str] = field(default_factory=list)  # what the owner changed (-> sheet refresh + picture)
 
 
 _CTX: ContextVar[RunContext | None] = ContextVar("run_ctx", default=None)
@@ -26,8 +28,8 @@ def current() -> RunContext | None:
 
 
 @contextmanager
-def run_context(chat_id: str | None, inbound: bool) -> Iterator[RunContext]:
-    ctx = RunContext(chat_id=chat_id, inbound=inbound)
+def run_context(chat_id: str | None, inbound: bool, text: str = "") -> Iterator[RunContext]:
+    ctx = RunContext(chat_id=chat_id, inbound=inbound, text=text)
     token = _CTX.set(ctx)
     try:
         yield ctx

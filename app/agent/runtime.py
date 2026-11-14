@@ -98,7 +98,7 @@ def _approval_prompt(reqs: list[dict]) -> str:
 
 def run_inbound(agent, msg: InboundMessage, d1_client=None) -> InboundReply:
     config = {"configurable": {"thread_id": msg.chat_id}}
-    with _chat_lock(msg.chat_id), context.run_context(msg.chat_id, inbound=True) as ctx:
+    with _chat_lock(msg.chat_id), context.run_context(msg.chat_id, inbound=True, text=msg.text) as ctx:
         waiting = pending_approval(agent, config)
         if waiting:
             ok = approval_answer(msg.text)
@@ -119,7 +119,22 @@ def run_inbound(agent, msg: InboundMessage, d1_client=None) -> InboundReply:
         still = pending_approval(agent, config)
         if still:  # fixed template of the exact pending action, not model text
             texts.append(_approval_prompt(still))
+        images += _sheet_picture(ctx)
     return InboundReply(reply="\n\n".join(texts) if texts else None, images=images)
+
+
+def _sheet_picture(ctx) -> list[str]:
+    """The owner changed something (count, par, order) or asked for the sheet: rewrite the Excel file
+    and attach a picture of it. Deterministic: the model doesn't decide whether the sheet updates."""
+    if not ctx.sheet_changes:
+        return []
+    try:
+        from app import sheet
+        return [sheet.refresh("; ".join(c for c in ctx.sheet_changes if c != "requested") or None)["png"]]
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("sheet refresh failed")
+        return []
 
 
 def _final_ai_text(agent, config) -> str | None:
@@ -139,11 +154,67 @@ def handle_inbound(msg: InboundMessage) -> InboundReply:
     agent = get_agent()
     if agent is None:
         return InboundReply(reply=f"(agent not configured: set AGENT_MODEL) echo: {msg.text}")
+    gate = _security_gate(agent, msg)
+    if gate is not None:
+        return gate
     return run_inbound(agent, msg)
 
 
-def notify(agent, chat_id: str, instruction: str) -> None:
-    """Proactive run: e.g. notify(agent, chat, 'Send the owner today's summary.')."""
+def _security_gate(agent, msg: InboundMessage) -> InboundReply | None:
+    """Authenticator codes and "lock" are handled here, in code: a code never reaches the model."""
+    from app import secure
+    if not secure.configured():
+        return None
+    if secure.looks_like_lock(msg.text):
+        secure.lock(msg.chat_id)
+        return InboundReply(reply="Locked. Bank info needs a new code next time.")
+    if not secure.looks_like_code(msg.text):
+        return None
+    res = secure.try_code(msg.chat_id, msg.text)
+    if res.status == "bad":
+        return InboundReply(reply=f"That code didn't match. {res.tries_left} "
+                                  f"{'try' if res.tries_left == 1 else 'tries'} left.")
+    if res.status == "locked_out":
+        return InboundReply(reply=f"Too many wrong codes. Bank info is locked for {res.minutes} minutes.")
+    if res.status == "reused":
+        return InboundReply(reply="That code was already used. Wait for the next one and send it.")
+    head = f"Verified. Unlocked for {res.minutes} minutes (text \"lock\" to lock it now)."
+    if not res.question:
+        return InboundReply(reply=head)
+    out = run_inbound(agent, InboundMessage(chat_id=msg.chat_id, sender=msg.sender, text=res.question, ts=msg.ts))
+    return InboundReply(reply=head + ("\n\n" + out.reply if out.reply else ""), images=out.images)
+
+
+def notify(agent, chat_id: str, instruction: str) -> dict:
+    """Proactive run (the agent texts first), e.g. the morning reorder plan. send_text goes straight
+    to the bridge. If the agent proposed orders, the owner gets the fixed approval prompt, and their
+    "yes" later resumes the paused orders in run_inbound."""
+    import httpx
+
+    from app.contracts import SendRequest
     config = {"configurable": {"thread_id": chat_id}}
-    with context.run_context(chat_id, inbound=False):
+    with _chat_lock(chat_id), context.run_context(chat_id, inbound=False) as ctx:
+        if pending_approval(agent, config):
+            return {"chat_id": chat_id, "skipped": "an approval is already waiting"}
         agent.invoke({"messages": [{"role": "user", "content": f"[system task] {instruction}"}]}, config, version="v2")
+        still = pending_approval(agent, config)
+        extra = _approval_prompt(still) if still else None
+        images = _sheet_picture(ctx)
+        if extra or images:
+            httpx.post(f"{settings.bridge_url}/send", timeout=15, json=SendRequest(
+                chat_id=chat_id, text=extra or "Here's the sheet.", images=images).model_dump())
+    return {"chat_id": chat_id, "pending_orders": len(still), "approval_prompt": extra}
+
+
+PLAN_TASK = ("Morning reorder check. Call reorder_plan. If items are below par, send the owner ONE short text "
+             "listing each item: on hand vs par, order qty, cost, and the total. Then call place_order once per "
+             "item with exactly the plan's order_qty (the owner approves by text). If nothing is below par, send "
+             "one short line saying stock is fine and nothing needs ordering.")
+
+
+def send_reorder_plan(chat_ids: list[str] | None = None) -> list[dict]:
+    from app.ledger import api as ledger
+    agent = get_agent()
+    if agent is None:
+        return []
+    return [notify(agent, c, PLAN_TASK) for c in (chat_ids or ledger.known_chats())]

@@ -25,7 +25,7 @@ def test_inventory_sheet_layout_and_formulas(tmp_path):
     assert set(rows) == {"Cheese", "Dough", "Pepperoni", "Sauce"}
     r = rows["Pepperoni"]
     assert ws.cell(r, 4).value == 4.25 and ws.cell(r, 3).value == 10
-    assert ws.cell(r, 6).value == f"=ROUNDUP(MAX(0,C{r}-D{r}),0)"
+    assert ws.cell(r, 6).value == f"=IF(D{r}<C{r},ROUNDUP(2*C{r}-D{r},0),0)"
     assert ws.cell(r, 9).value == f'=IF(D{r}<C{r},"REORDER","OK")'
     assert ws["A10"].value == "Total to reorder" and ws["H10"].value == "=SUM(H5:H8)"
     assert ws.conditional_formatting, "below-par rows are highlighted"

@@ -17,3 +17,6 @@ hardware/grabs/
 hardware/recordings/
 hardware/snapshots/
 *.mp4
+
+# owner sheet + authenticator QR (contains the TOTP secret): never commit
+/exports/

@@ -30,6 +30,10 @@ class Settings:
     guard_soften_min: float = float(os.getenv("GUARD_SOFTEN_MIN", "0.65"))
     # What the camera watches: "pizza" (ingredient bins on a make-line) or "drinks" (a drinks fridge/shelf).
     scene: str = os.getenv("SCENE", "pizza")
+    # Base32 secret shared with the owner's authenticator app (scripts/setup_authenticator.py).
+    owner_totp_secret: str = os.getenv("OWNER_TOTP_SECRET", "")
+    # Where the live Excel sheet is written after every change (the owner opens this file).
+    sheet_path: Path = Path(os.getenv("SHEET_PATH", str(ROOT / "exports" / "Inventory.xlsx"))).resolve()
 
 
 settings = Settings()
