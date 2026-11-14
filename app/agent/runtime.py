@@ -289,8 +289,8 @@ def briefing_task(day: str | None = None) -> str:
     today = datetime.now(TZ).date()
     y = day or (today - timedelta(days=1)).isoformat()
     return (
-        f"[morning briefing for {today.isoformat()}] Prepare the owner's morning text. Delegate these three in "
-        f"PARALLEL with the task tool (one message, three task calls):\n"
+        f"[morning briefing for {today.isoformat()}] Prepare the owner's morning text. Delegate these three "
+        f"with the task tool (in parallel if you can: one message, three task calls):\n"
         f"1. analyst: 'Compare {y} with a normal day using usage_trend(day=\"{y}\"). Report the 3 biggest changes "
         f"(item, used vs typical, % change, and days of stock left), exact numbers only.'\n"
         f"2. clip-reviewer: 'Re-check the flagged camera grabs from {y} and {today.isoformat()} (flagged_grabs, then "
@@ -305,7 +305,7 @@ def briefing_task(day: str | None = None) -> str:
 
 
 def send_morning_briefing(chat_ids: list[str] | None = None) -> list[dict]:
-    """Every morning: three subagents in parallel (analyst, clip reviewer, purchasing) -> a report
+    """Every morning: three subagents (analyst, clip reviewer, purchasing) -> a report
     file -> one text to the owner -> the reorder waits for their yes."""
     from app.ledger import api as ledger
     agent = get_agent()

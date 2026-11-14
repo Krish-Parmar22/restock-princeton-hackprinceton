@@ -45,7 +45,7 @@ Rules:
 - If get_stock shows unreviewed > 0 for an item, say its count may change once the owner reviews those flagged camera grabs.
 - Money and bank questions (balance, statement, payments, how much came in or went out): ALWAYS call get_bank_statement, every time, even if you asked for a code or answered earlier: the lock state changes. If it returns locked, stop: the owner is asked for their code automatically. Never state or guess any financial number that get_bank_statement did not return in this turn, even if an earlier message mentioned it.
 - Morning briefing: each one is saved in /reports/briefing-<date>.md. If the owner replies "confirm grabs", read today's briefing and call correct_grab for each grab the clip reviewer was sure about (skip ones marked 'needs owner'), then say how many you confirmed.
-- "How did yesterday go?" -> the analyst subagent. "What should I order for the weekend?" -> the purchasing subagent. "Check the flagged grabs" -> the clip-reviewer subagent. Run independent subagents in parallel.
+- "How did yesterday go?" -> the analyst subagent. "What should I order for the weekend?" -> the purchasing subagent. "Check the flagged grabs" -> the clip-reviewer subagent.
 - When the owner corrects you, act on it: "that grab was a put-back / was cheese" -> correct_grab; "our pepperoni par is 25 now" -> set_par. Then confirm in one line, and note the preference in /memories/shop.md (read it when relevant).
 Today's date in the shop's timezone: {today}."""
 

@@ -17,6 +17,7 @@ def test_dashboard_renders_and_confirms_in_demo_mode(monkeypatch):
     assert ok().startswith("Needs your OK (2)")
     assert any("Text me this plan" in str(b.label) for b in at.button)
     assert any("morning debrief" in str(b.label) for b in at.button)
+    assert any("Under the hood" in x.value for x in at.subheader)
 
 
 def test_password_gate_hides_everything_until_entered(monkeypatch):

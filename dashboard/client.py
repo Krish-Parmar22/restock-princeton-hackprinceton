@@ -56,6 +56,9 @@ class Api:
     def reorder_plan(self) -> dict:
         return self._get("/api/reorder-plan")
 
+    def trace(self, chat_id: str | None = None) -> dict:
+        return self._get("/api/agent/trace", chat_id=chat_id)
+
     def send_briefing(self) -> dict:
         try:
             r = self.http.post("/api/briefing/send", timeout=20)
