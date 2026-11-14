@@ -19,7 +19,7 @@ import re
 from typing import Any, Callable
 
 from langchain.agents.middleware import AgentMiddleware
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import HumanMessage, ToolMessage
 
 from app.agent import context
 from app.config import settings
@@ -33,29 +33,47 @@ FALLBACK = "I couldn't confirm that from the records yet. Want me to pull the cl
 SOFTEN_PREFIX = "Looks like: "
 
 
+ACCUSE = re.compile(r"\b(steal|stole|stolen|theft|thief|thieves|took home|pocket|skim|fraud|lying|lied)", re.I)
+
+
 def split_claims(text: str) -> list[str]:
-    """Factual sentences only: drop questions, greetings and short filler."""
+    """Sentences d1 must check. Skips plain pleasantries and neutral questions, but keeps any
+    sentence (question or not) with a number or an accusation. Fails closed: a substantive
+    message with no extracted claims is checked as a whole."""
     parts = re.split(r"(?<=[.!?])\s+|\n+", text.strip())
     claims = []
     for p in (s.strip() for s in parts):
-        if not p or p.endswith("?"):
+        if not p:
             continue
-        if len(p.split()) < 4 and not re.search(r"\d", p):
+        risky = bool(re.search(r"\d", p) or ACCUSE.search(p))
+        if p.endswith("?") and not risky:
+            continue
+        if not risky and len(p.split()) < 4:
             continue
         claims.append(p)
+    if not claims and len(text.split()) >= 4:
+        claims = [text.strip()]
     return claims
+
+
+def current_turn(messages: list) -> list:
+    """Messages since the owner's latest message: evidence and block counts never come from old turns."""
+    for i in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[i], HumanMessage):
+            return messages[i + 1:]
+    return messages
 
 
 def _evidence(state: dict) -> str:
     tool_results = [
-        f"[{m.name}] {m.content}" for m in state.get("messages", [])
+        f"[{m.name}] {str(m.content)[:4000]}" for m in current_turn(state.get("messages", []))
         if isinstance(m, ToolMessage) and m.name != GUARDED_TOOL
     ]
     try:
         snapshot = json.dumps([r.model_dump() for r in ledger.get_inventory()], default=str)
     except Exception:  # ledger down: judge on tool results alone
         snapshot = "unavailable"
-    return ("Tool results from this conversation:\n" + "\n".join(tool_results[-12:]) +
+    return ("Tool results from this conversation:\n" + "\n".join(tool_results[-20:]) +
             f"\n\nCurrent inventory snapshot:\n{snapshot}")
 
 
@@ -65,9 +83,9 @@ def score_message(text: str, state: dict, client: D1Client) -> tuple[float, list
         return 1.0, []
     qs = [D1Question(
         id=f"claim_{i}", type="noul",
-        instructions=("Using ONLY the evidence in `state`, is this statement supported? "
-                      "Numbers must match the evidence; claims about causes or people need direct evidence. "
-                      f"Statement: {c}"))
+        instructions=("Using ONLY the evidence in `state`, is everything this statement says or implies supported? "
+                      "Numbers must match the evidence. Any suggestion that a person did something wrong "
+                      f"needs direct evidence. Statement: {c}"))
         for i, c in enumerate(claims)]
     answers = client.ask(qs, _evidence(state))
     scored = [{"claim": c, "score": round(answers[q.id].p_yes, 4)} for c, q in zip(claims, qs)]
@@ -75,7 +93,7 @@ def score_message(text: str, state: dict, client: D1Client) -> tuple[float, list
 
 
 def _prior_blocks(state: dict) -> int:
-    return sum(1 for m in state.get("messages", [])
+    return sum(1 for m in current_turn(state.get("messages", []))
                if isinstance(m, ToolMessage) and m.name == GUARDED_TOOL and BLOCK_TAG in str(m.content))
 
 
@@ -117,3 +135,18 @@ class D1GuardMiddleware(AgentMiddleware):
             content=(f"{BLOCK_TAG} (score {score:.2f}). Unsupported claim: \"{worst['claim']}\". "
                      "Rewrite using only facts and numbers from tool results, then call send_text again."),
             tool_call_id=call["id"], name=GUARDED_TOOL, status="error")
+
+
+def guard_final_text(text: str, state: dict, client: D1Client, chat_id: str | None) -> str:
+    """Guard a plain-text model reply (no send_text call). Returns what may be sent."""
+    score, claims = score_message(text, state, client)
+    if score >= settings.guard_send_min:
+        ledger.record_message(chat_id, text, score, "sent", claims)
+        return text
+    if score >= settings.guard_soften_min:
+        soft = SOFTEN_PREFIX + text
+        ledger.record_message(chat_id, soft, score, "softened", claims)
+        return soft
+    ledger.record_message(chat_id, text, score, "blocked", claims)
+    ledger.record_message(chat_id, FALLBACK, None, "sent", [])
+    return FALLBACK

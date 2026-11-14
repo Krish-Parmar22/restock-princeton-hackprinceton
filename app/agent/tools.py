@@ -99,7 +99,10 @@ def send_text(message: str, images: list[str] | None = None) -> str:
 def place_order(item: str, qty: float, supplier: str | None = None) -> str:
     """Place a reorder with the supplier. Pauses for the owner's approval before it runs."""
     ctx = context.current()
-    oid = ledger.draft_order(item, qty, ctx.chat_id if ctx else None, supplier)
+    try:
+        oid = ledger.draft_order(item, qty, ctx.chat_id if ctx else None, supplier)
+    except (KeyError, ValueError) as e:
+        return _j({"error": str(e)})
     ledger.set_order_status(oid, "approved")
     return _j({"order_id": oid, "item": item, "qty": qty, "status": "approved"})
 

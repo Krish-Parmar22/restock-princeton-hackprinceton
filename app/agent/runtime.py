@@ -7,12 +7,16 @@ notify: proactive message (e.g. daily summary); send_text POSTs to the bridge.
 from __future__ import annotations
 
 import re
+import threading
+from collections import defaultdict
 from functools import lru_cache
 
+from langchain_core.messages import AIMessage
 from langgraph.types import Command
 
 from app.agent import context
 from app.agent.build import build_agent, postgres_persistence
+from app.agent.guard import current_turn, guard_final_text
 from app.config import settings
 from app.contracts import InboundMessage, InboundReply
 
@@ -26,6 +30,25 @@ def yes_no(text: str) -> bool | None:
     if YES.search(text):
         return True
     return None
+
+
+def approval_answer(text: str) -> bool | None:
+    """Strict: only a short, plain yes/no settles a pending order. 'Yes, but only 2 lb' is None
+    (the order is rejected and the agent reconsiders with the owner's words)."""
+    t = text.strip()
+    if re.search(r"\d", t) or len(t.split()) > 4 or "but" in t.lower():
+        return None
+    return yes_no(t)
+
+
+_chat_locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
+_locks_guard = threading.Lock()
+
+
+def _chat_lock(chat_id: str) -> threading.Lock:
+    """One run at a time per chat, so two quick 'yes' texts can't resume the same order twice."""
+    with _locks_guard:
+        return _chat_locks[chat_id]
 
 
 @lru_cache(maxsize=1)
@@ -55,23 +78,38 @@ def _approval_prompt(reqs: list[dict]) -> str:
     return "Approve this order: " + ", ".join(lines) + "? Reply yes or no."
 
 
-def run_inbound(agent, msg: InboundMessage) -> InboundReply:
+def run_inbound(agent, msg: InboundMessage, d1_client=None) -> InboundReply:
     config = {"configurable": {"thread_id": msg.chat_id}}
-    with context.run_context(msg.chat_id, inbound=True) as ctx:
+    with _chat_lock(msg.chat_id), context.run_context(msg.chat_id, inbound=True) as ctx:
         waiting = pending_approval(agent, config)
         if waiting:
-            ok = yes_no(msg.text)
+            ok = approval_answer(msg.text)
             decision = ({"type": "approve"} if ok else
-                        {"type": "reject", "message": f"Owner replied: {msg.text!r}. Do not place it."})
+                        {"type": "reject", "message": (f"Owner replied: {msg.text!r}. Do not place this order. "
+                                                       "If they asked for something different, handle that.")})
             agent.invoke(Command(resume={"decisions": [decision] * len(waiting)}), config, version="v2")
         else:
             agent.invoke({"messages": [{"role": "user", "content": msg.text}]}, config, version="v2")
         texts = [m["text"] for m in ctx.outbox]
         images = [i for m in ctx.outbox for i in m["images"]]
+        if not texts:  # model answered in plain text instead of send_text: guard it too
+            final = _final_ai_text(agent, config)
+            if final:
+                from app.d1.base import get_client
+                texts.append(guard_final_text(final, agent.get_state(config).values, d1_client or get_client(),
+                                              msg.chat_id))
         still = pending_approval(agent, config)
-        if still:
+        if still:  # fixed template of the exact pending action, not model text
             texts.append(_approval_prompt(still))
     return InboundReply(reply="\n\n".join(texts) if texts else None, images=images)
+
+
+def _final_ai_text(agent, config) -> str | None:
+    msgs = current_turn(agent.get_state(config).values.get("messages", []))
+    for m in reversed(msgs):
+        if isinstance(m, AIMessage) and not m.tool_calls and isinstance(m.content, str) and m.content.strip():
+            return m.content.strip()
+    return None
 
 
 def handle_inbound(msg: InboundMessage) -> InboundReply:

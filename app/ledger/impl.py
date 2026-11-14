@@ -202,7 +202,13 @@ def confirm_grab(grab_id: str, body: GrabConfirm) -> GrabRow:
     return _grab_row(r)
 
 
+MAX_ORDER_QTY = 1000
+
+
 def draft_order(item: str, qty: float, chat_id: str | None = None, supplier: str | None = None) -> int:
+    import math
+    if not isinstance(qty, (int, float)) or not math.isfinite(qty) or qty <= 0 or qty > MAX_ORDER_QTY:
+        raise ValueError(f"order qty must be between 0 and {MAX_ORDER_QTY}, got {qty!r}")
     with _conn() as conn:
         it = _item(conn, item)
         return conn.execute(

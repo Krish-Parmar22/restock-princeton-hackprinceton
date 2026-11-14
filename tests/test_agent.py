@@ -140,3 +140,53 @@ def test_inbound_endpoint_echoes_without_model():
     from app.api.server import app
     r = TestClient(app).post("/inbound", json={"chat_id": "c", "sender": "s", "text": "hi", "ts": "2026-11-14T12:00:00Z"})
     assert r.status_code == 200 and "echo: hi" in r.json()["reply"]
+
+
+# ---- regressions from Codex review ----
+
+def test_accusing_question_is_checked():
+    from app.agent.guard import split_claims
+    assert split_claims("Did Maria steal 5 lb?") == ["Did Maria steal 5 lb?"]
+    assert split_claims("Want me to check the clips?") == []          # neutral question: skipped
+    assert split_claims("Thanks!") == []
+
+
+def test_partial_yes_does_not_approve_original_order(fake_ledger):
+    from app.agent.runtime import approval_answer
+    assert approval_answer("Yes, but only order 2 lb") is None
+    agent = make_agent([
+        ai(place_order={"item": "pepperoni", "qty": 20}),
+        ai(send_text={"message": "Okay, I did not place the 20 lb pepperoni order."}),
+        ai("done"),
+    ])
+    run_inbound(agent, msg("reorder pepperoni"))
+    run_inbound(agent, msg("Yes, but only order 2 lb"))
+    assert fake_ledger["orders"] == []
+
+
+def test_plain_text_reply_still_goes_through_guard(fake_ledger):
+    agent = make_agent([ai("Pepperoni is at 4.25 lb, below the par of 10.")])
+    out = run_inbound(agent, msg("how much pepperoni?"), d1_client=KeywordD1())
+    assert out.reply == "Pepperoni is at 4.25 lb, below the par of 10."
+    assert fake_ledger["messages"][0][0] == "sent"
+
+
+def test_plain_text_accusation_is_replaced(fake_ledger):
+    agent = make_agent([ai("Your night cook stole 3 lb of pepperoni.")])
+    out = run_inbound(agent, msg("what happened?"), d1_client=KeywordD1())
+    assert out.reply == FALLBACK
+
+
+def test_evidence_scoped_to_current_turn():
+    from langchain_core.messages import HumanMessage, ToolMessage
+    from app.agent.guard import current_turn
+    old = ToolMessage(content="old", tool_call_id="1", name="get_stock")
+    new = ToolMessage(content="new", tool_call_id="2", name="get_stock")
+    assert current_turn([HumanMessage("a"), old, HumanMessage("b"), new]) == [new]
+
+
+def test_bad_order_qty_rejected():
+    from app.ledger import impl
+    for q in (0, -5, float("nan"), 10_000):
+        with pytest.raises(ValueError):
+            impl.draft_order("pepperoni", q)
