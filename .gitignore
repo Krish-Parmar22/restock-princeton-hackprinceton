@@ -4,3 +4,9 @@
 node_modules/
 __pycache__/
 .venv/
+.pgdata/
+*.log
+grabs/
+data/real/
+!.env.example
+.pytest_cache/

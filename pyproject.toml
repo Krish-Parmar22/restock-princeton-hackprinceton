@@ -1,0 +1,27 @@
+[project]
+name = "princeton-hacks"
+version = "0.1.0"
+description = "CCTV-to-inventory agent for small restaurants (HackPrinceton F26)"
+requires-python = ">=3.11"
+dependencies = [
+  "deepagents==0.7.38",
+  "langchain-anthropic",
+  "langgraph-checkpoint-postgres",
+  "psycopg[binary,pool]>=3.2",
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "httpx>=0.27",
+  "pydantic>=2.7",
+  "pillow>=10",
+  "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+groq = ["langchain-groq"]
+ollama = ["langchain-ollama"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
