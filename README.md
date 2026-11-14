@@ -5,7 +5,9 @@
 
 ![Our team with the owner](docs/media/team-with-owner.jpg)
 
-## At the restaurant (Nov 14)
+## At the restaurant: Casa Piada, Greenwich (Nov 14)
+We worked with **Filippo Spagnesi (manager)** and **Abel Romero Corbalan (assistant manager)**. Details and evidence: [`docs/discovery/2026-11-14-casa-piada.md`](docs/discovery/2026-11-14-casa-piada.md).
+
 | The setup | The team with the staff |
 |---|---|
 | ![Webcam on the counter watching the drinks fridge; the live view with Sprite and limonada boxes](docs/media/setup-drinks-fridge.jpg) | ![The team with the restaurant staff](docs/media/team-and-staff.jpg) |
