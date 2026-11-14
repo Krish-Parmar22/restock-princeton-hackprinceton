@@ -52,12 +52,14 @@ SCENES = {
         place="ingredient bin on a pizza make-line", camera="fixed kitchen camera", bin="bin",
         thing="ingredient", holding="food, such as a piece or handful of an ingredient",
         qty="'pinch': a few pieces or a small pinch. 'handful': about a full handful. "
-            "'whole_container': the whole bin or container was lifted out or emptied."),
+            "'whole_container': the whole bin or container was lifted out or emptied.",
+        qty_options=("pinch", "handful", "whole_container")),
     "drinks": dict(
         place="drinks fridge or shelf at a restaurant", camera="fixed camera", bin="shelf",
         thing="drink", holding="a drink, such as a can or bottle",
-        qty="'pinch': exactly one can or bottle. 'handful': two or three cans or bottles. "
-            "'whole_container': a whole pack or case."),
+        qty="Count the cans or bottles. '1', '2' or '3': exactly that many were moved. "
+            "'more': more than three, a whole pack, or you can't tell the exact count.",
+        qty_options=("1", "2", "3", "more")),   # exact counts; 'more' has no fixed qty -> owner reviews
 }
 
 
@@ -127,7 +129,7 @@ def build_questions(pkg: GrabPackage, items: list[str]) -> tuple[dict, dict]:
                 ),
             ),
             D1Question(
-                id="qty", type="choice", options=("pinch", "handful", "whole_container"),
+                id="qty", type="choice", options=w["qty_options"],
                 instructions=(
                     f"How much {w['thing']} did the hand move during the grab ({during_span})? "
                     f"{w['qty']}"

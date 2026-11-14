@@ -34,7 +34,7 @@ def db(tmp_path, monkeypatch):
     with connect(URL) as conn:
         for name, par, have in (("coke", 6, 4), ("sprite", 6, 20)):
             conn.execute("INSERT INTO items (name, unit, unit_cost, par, qty_per_label) VALUES (%s,'each',1.0,%s,%s)",
-                         (name, par, Jsonb({"pinch": 1, "handful": 2, "whole_container": 6})))
+                         (name, par, Jsonb({"1": 1, "2": 2, "3": 3})))
             conn.execute("INSERT INTO counts (ts, item_id, qty) SELECT %s, id, %s FROM items WHERE name = %s",
                          (datetime.now(TZ) - timedelta(hours=1), have, name))
     fake = SimpleNamespace(owner_totp_secret=SECRET, sheet_path=tmp_path / "Inventory.xlsx")
@@ -123,3 +123,31 @@ def test_gate_handles_codes_without_the_model(db, monkeypatch):
     assert pyotp.TOTP(SECRET).now() not in seen[0], "never the code itself"
     assert runtime._security_gate(object(), msg("lock")).reply.startswith("Locked")
     assert not secure.is_unlocked("chat-9")
+
+
+def test_drinks_questions_ask_for_an_exact_count(monkeypatch):
+    from pathlib import Path
+    from app.contracts import GrabMeta, GrabPackage
+    from app.grabs import checks
+    monkeypatch.setattr(checks, "settings", SimpleNamespace(scene="drinks"))
+    now = datetime.now(timezone.utc)
+    pkg = GrabPackage(folder=Path("/tmp"), meta=GrabMeta(grab_id="g", camera_id="c", zone="coke", t_start=now,
+                      t_end=now + timedelta(seconds=2), frame_times=[], source="webcam"),
+                      before=Path("/tmp/b.jpg"), during=[Path("/tmp/d.jpg")], after=Path("/tmp/a.jpg"))
+    _, grab = checks.build_questions(pkg, ["coke", "sprite"])
+    q = next(q for q in grab["questions"] if q.id == "qty")
+    assert q.options == ("1", "2", "3", "more") and "cans or bottles" in q.instructions
+    assert "drinks fridge" in grab["state"] and "pizza" not in grab["state"]
+
+
+@pytest.mark.parametrize("label,action,expect,status", [
+    ("1", "took", 3.0, "logged"), ("2", "took", 2.0, "logged"), ("3", "took", 1.0, "logged"),
+    ("2", "put_back", 6.0, "logged"), ("1", "touched", 4.0, "logged"), ("more", "took", 4.0, "flagged")])
+def test_exact_can_counts_move_stock_exactly(db, label, action, expect, status):
+    now = datetime.now(TZ)
+    impl.record_grab({"grab_id": f"g-{label}-{action}", "zone": "coke", "camera_id": "c", "source": "webcam",
+                      "t_start": now, "t_end": now, "item": "coke", "action": action, "qty_label": label,
+                      "confidence": 0.95, "status": "logged", "frames": {"before": "", "during": [], "after": ""}}, [])
+    inv = {r.item: r for r in impl.get_inventory(now + timedelta(minutes=1))}
+    assert inv["coke"].on_hand == expect           # started at 4 cans
+    assert impl.list_grabs(now.date(), "all")[0].status == status

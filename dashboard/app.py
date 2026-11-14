@@ -21,7 +21,7 @@ from client import ApiError, connect
 from excel import workbook_bytes
 
 ACTIONS = ["took", "put_back", "touched"]
-QTYS = ["pinch", "handful", "whole_container"]
+QTYS = ["1", "2", "3", "pinch", "handful", "whole_container"]   # exact counts for cans; amounts for bulk food
 
 st.set_page_config(page_title="Inventory", page_icon="🍕", layout="wide")
 st.markdown(
