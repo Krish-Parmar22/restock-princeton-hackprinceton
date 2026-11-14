@@ -74,8 +74,18 @@ def _evidence(state: dict) -> str:
         snapshot = json.dumps([r.model_dump() for r in ledger.get_inventory()], default=str)
     except Exception:  # ledger down: judge on tool results alone
         snapshot = "unavailable"
+    try:  # so "the records are balanced" can be checked against the real gaps
+        from datetime import datetime, timedelta
+        from app.ledger.impl import TZ
+        end = datetime.now(TZ).date()
+        week = [{k: v for k, v in r.model_dump().items() if k != "grab_ids"}
+                for r in ledger.get_variance(end - timedelta(days=6), end)]
+        variance = json.dumps(week, default=str)
+    except Exception:
+        variance = "unavailable"
     return ("Tool results from this conversation:\n" + "\n".join(tool_results[-20:]) +
-            f"\n\nCurrent inventory snapshot:\n{snapshot}")
+            f"\n\nCurrent inventory snapshot:\n{snapshot}" +
+            f"\n\nLast 7 days, should-have-used vs actually-used per item:\n{variance}")
 
 
 def score_message(text: str, state: dict, client: D1Client) -> tuple[float, list[dict]]:
@@ -85,8 +95,10 @@ def score_message(text: str, state: dict, client: D1Client) -> tuple[float, list
     qs = [D1Question(
         id=f"claim_{i}", type="noul",
         instructions=("Using ONLY the evidence in `state`, is everything this statement says or implies supported? "
-                      "Numbers must match the evidence. Any suggestion that a person did something wrong "
-                      f"needs direct evidence. Statement: {c}"))
+                      "Judge factual claims about stock, numbers, dates, events or people: numbers must match the "
+                      "evidence, and any suggestion that a person did something wrong needs direct evidence. "
+                      "Offers, questions, and statements about what the assistant will do next are fine. "
+                      f"Statement: {c}"))
         for i, c in enumerate(claims)]
     answers = client.ask(qs, _evidence(state))
     scored = [{"claim": c, "score": round(answers[q.id].p_yes, 4)} for c, q in zip(claims, qs)]
