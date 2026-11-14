@@ -9,7 +9,6 @@ from __future__ import annotations
 import re
 import threading
 from collections import defaultdict
-from functools import lru_cache
 
 from langchain_core.messages import AIMessage
 from langgraph.types import Command
@@ -51,13 +50,21 @@ def _chat_lock(chat_id: str) -> threading.Lock:
         return _chat_locks[chat_id]
 
 
-@lru_cache(maxsize=1)
+_AGENT = {}
+_AGENT_LOCK = threading.Lock()
+
+
 def get_agent():
-    """The production agent, or None when no model is configured."""
+    """The production agent (built once, thread-safe), or None when no model is configured.
+    Concurrent first texts used to race Postgres setup() (duplicate-key errors, live test Nov 14)."""
     if not settings.agent_model:
         return None
-    saver, store = postgres_persistence()
-    return build_agent(settings.agent_model, checkpointer=saver, store=store)
+    if "agent" not in _AGENT:
+        with _AGENT_LOCK:
+            if "agent" not in _AGENT:
+                saver, store = postgres_persistence()
+                _AGENT["agent"] = build_agent(settings.agent_model, checkpointer=saver, store=store)
+    return _AGENT["agent"]
 
 
 def pending_approval(agent, config) -> list[dict]:

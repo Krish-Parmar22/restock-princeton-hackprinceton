@@ -15,13 +15,17 @@ class GrabCutter:
 
     def cut(self, zone_name: str, t_start: float, t_end: float,
             frame_buffer, during_fps: float = 2.0,
-            zone_polygon: list | None = None, camera_id: str = "mac_cam") -> str | None:
+            zone_polygon: list | None = None, camera_id: str = "mac_cam",
+            before_frame=None, during: list | None = None) -> str | None:
         """Produce a grab package from the frame buffer.
 
         Returns the grab folder path, or None if not enough frames.
         """
-        # before: ~1 second before motion started
-        before_frame = frame_buffer.get_frame_at(t_start - 1.0)
+        # before: ~1 second before motion started. Prefer the snapshot taken when motion STARTED
+        # (pipeline.PiPipeline); asking the 3 s buffer at the end of a long grab returns a
+        # mid-grab frame with the hand in it.
+        if before_frame is None:
+            before_frame = frame_buffer.get_frame_at(t_start - 1.0)
         if before_frame is None:
             before_frame = frame_buffer.get_frame_at(t_start)
         if before_frame is None:
@@ -32,8 +36,8 @@ class GrabCutter:
         if after_frame is None:
             return None
 
-        # during: sample at ~during_fps between t_start and t_end
-        all_during = frame_buffer.get_frames_between(t_start, t_end)
+        # during: sampled live by the pipeline when available, else from the buffer
+        all_during = during if during else frame_buffer.get_frames_between(t_start, t_end)
         if not all_during:
             return None
 

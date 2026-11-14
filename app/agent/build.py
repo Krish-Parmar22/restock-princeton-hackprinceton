@@ -103,16 +103,18 @@ def build_agent(model: str | BaseChatModel, *, checkpointer, store=None, d1_clie
 
 
 def postgres_persistence(url: str | None = None):
-    """(checkpointer, store) on Postgres. Connections stay open for the process lifetime."""
-    import psycopg
+    """(checkpointer, store) on Postgres, backed by a connection POOL: concurrent owner texts each
+    get their own connection (one shared connection serialized/raced under load; see
+    docs/struggles.md). setup() is idempotent but not concurrency-safe, so get_agent() holds a lock."""
     from langgraph.checkpoint.postgres import PostgresSaver
     from langgraph.store.postgres import PostgresStore
     from psycopg.rows import dict_row
+    from psycopg_pool import ConnectionPool
 
-    kw = dict(autocommit=True, prepare_threshold=0, row_factory=dict_row)
-    url = url or settings.database_url
-    saver = PostgresSaver(psycopg.connect(url, **kw))
-    store = PostgresStore(psycopg.connect(url, **kw))
+    pool = ConnectionPool(url or settings.database_url, min_size=1, max_size=10, open=True,
+                          kwargs=dict(autocommit=True, prepare_threshold=0, row_factory=dict_row))
+    saver = PostgresSaver(pool)
+    store = PostgresStore(pool)
     saver.setup()
     store.setup()
     return saver, store

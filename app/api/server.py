@@ -24,6 +24,13 @@ WATCHER: dict = {}  # {"thread":..., "watcher":...} when running in-process
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """One command runs everything: the API and (WATCHER_IN_SERVER) the grab watcher thread."""
+    if settings.agent_model:  # build the agent now: first text isn't slow, no setup race
+        try:
+            from app.agent.runtime import get_agent
+            get_agent()
+            log.info("agent ready (%s)", settings.agent_model)
+        except Exception:
+            log.exception("agent warm-up failed; will retry on first text")
     if settings.watcher_in_server:
         from app.grabs.watcher import build_watcher
 

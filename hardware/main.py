@@ -21,9 +21,9 @@ import time
 
 import cv2
 
-from frame_buffer import FrameBuffer
 from grab_cutter import GrabCutter
 from motion_trigger import MotionTrigger
+from pipeline import PiPipeline
 from recorder import Recorder
 import uploader
 
@@ -107,12 +107,12 @@ def main():
     zone_points = {z["name"]: z["points"] for z in zones}
 
     # init modules
-    buffer = FrameBuffer(duration=3.0)  # 3s to have margin for the "before" frame
     cutter = GrabCutter(output_dir=GRABS_DIR, source=args.source)
     recorder = None if args.no_record else Recorder(
         output_dir=RECORDINGS_DIR, fps=args.fps, resolution=(w, h)
     )
     trigger = MotionTrigger(zones, test_frame.shape) if zones else None
+    pipe = PiPipeline(zones, test_frame.shape, cutter, camera_id=args.camera_id, trigger=trigger) if zones else None
 
     frame_interval = 1.0 / args.fps
     grab_count = 0
@@ -135,29 +135,17 @@ def main():
         now = time.time()
         frame_num += 1
 
-        # store in buffer
-        buffer.add(frame, now)
 
         # record
         if recorder:
             recorder.write_frame(frame)
 
-        # motion detection
-        if trigger:
-            events = trigger.update(frame, now)
-            for ev in events:
-                folder = cutter.cut(
-                    zone_name=ev["zone"],
-                    t_start=ev["t_start"],
-                    t_end=ev["t_end"],
-                    frame_buffer=buffer,
-                    zone_polygon=zone_points.get(ev["zone"]),
-                    camera_id=args.camera_id,
-                )
-                if folder:
-                    grab_count += 1
-                    if worker:
-                        worker.nudge()
+        # motion detection -> grab packages (before snapshotted at motion start)
+        if pipe:
+            for folder in pipe.process(frame, now):
+                grab_count += 1
+                if worker:
+                    worker.nudge()
 
         # live preview
         if args.show:
