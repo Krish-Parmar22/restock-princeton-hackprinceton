@@ -37,6 +37,9 @@ def main() -> None:
         senders = {r["chat_id"]: r["sender"] for r in c.execute("SELECT chat_id, sender FROM chats WHERE chat_id LIKE 'pho_%'").fetchall()}
     seed(a.url, reset=True)
     with connect(a.url) as c:
+        # the seeded week runs through tonight; drop anything after "now" or it eats stock as the clock passes
+        c.execute("DELETE FROM grab_events WHERE t_start > now()")
+        c.execute("DELETE FROM pos_sales WHERE ts > now()")
         for name, (unit, cost) in EXTRA_ITEMS.items():
             c.execute("""INSERT INTO items (name, unit, unit_cost, par, qty_per_label)
                          VALUES (%s, %s, %s, 4, '{"1":1,"2":2,"3":3,"pinch":1,"handful":2,"whole_container":6}')
