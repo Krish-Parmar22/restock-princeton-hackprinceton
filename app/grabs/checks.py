@@ -131,9 +131,8 @@ def decide(answers: dict[str, D1Answer], min_prob: float) -> dict:
     if action in ("took", "put_back"):
         qty_label = answers["qty"].answer
         deciding["qty"] = answers["qty"]
-        deciding["hand_food"] = answers["hand_food"]
-        if answers["hand_food"].answer != "yes":
-            reasons.append(f"{action} but no hand holding food")
+        # hand_food is recorded for context but is NOT a veto: the before/after bin change is the
+        # primary signal, and a utensil or an occluded hand shouldn't flag a clear bin change.
 
     confidence = round(min(a.confidence for a in deciding.values()), 4)
     low = [f"{qid}={a.confidence:.2f}" for qid, a in deciding.items() if a.confidence < min_prob]

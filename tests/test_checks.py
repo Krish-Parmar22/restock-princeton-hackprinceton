@@ -98,9 +98,9 @@ def test_item_none_is_flagged(pkg):
     assert row["status"] == "flagged"
 
 
-def test_took_without_food_in_hand_is_flagged(pkg):
+def test_hand_food_no_is_not_a_veto(pkg):
     row, _ = check_grab(pkg, ITEMS, FakeD1(p=0.95, overrides={"hand_food": ("no", 0.95)}))
-    assert row["status"] == "flagged"
+    assert row["status"] == "logged"  # clear bin change wins; hand_food is context only
 
 
 def test_images_are_labelled_by_position(tmp_path):
@@ -155,28 +155,52 @@ def test_watcher_skips_incomplete_and_retries_failures(grabs, monkeypatch):
             raise RuntimeError("db down")
 
     monkeypatch.setattr("app.ledger.api.record_grab", record)
-    w = GrabWatcher(d, client=FakeD1(), items_fn=lambda: ITEMS, settle_s=0)
+    w = GrabWatcher(d, client=FakeD1(), items_fn=lambda: ITEMS, settle_s=0, backoff_base_s=0)
     assert w.poll_once() == []  # every record failed: nothing marked processed
     assert not (d / ".processed.json").exists()
+    assert json.loads((d / ".failed.json").read_text())  # failures are visible
+    for _ in range(5):          # keeps retrying: never a permanent skip
+        assert w.poll_once() == []
     fail["on"] = False
     done = w.poll_once()
     assert grabs[1].name not in done and len(done) == len(grabs) - 1
+    assert json.loads((d / ".failed.json").read_text()) == {}
 
 
-def test_watcher_items_fall_back_to_zone_names(grabs, monkeypatch):
-    seen = []
+def test_watcher_backs_off_after_failure(grabs, monkeypatch):
+    monkeypatch.setattr("app.ledger.api.record_grab", lambda row, ans: (_ for _ in ()).throw(RuntimeError("x")))
+    w = GrabWatcher(grabs[0].parent, client=FakeD1(), items_fn=lambda: ITEMS, settle_s=0, backoff_base_s=60)
+    w.poll_once()
+    assert w.pending() == []    # all in backoff window
 
-    class Spy(FakeD1):
-        def ask(self, questions, state, images=None):
-            seen.extend(q.options for q in questions if q.id == "item")
-            return super().ask(questions, state, images)
+
+def test_watcher_rejects_half_written_image(grabs, monkeypatch):
+    monkeypatch.setattr("app.ledger.api.record_grab", lambda row, ans: None)
+    (grabs[0] / "after.jpg").write_bytes((grabs[0] / "after.jpg").read_bytes()[:200])  # truncated JPEG
+    w = GrabWatcher(grabs[0].parent, client=FakeD1(), items_fn=lambda: ITEMS, settle_s=0)
+    assert grabs[0].name not in w.poll_once()
+
+
+def test_watcher_quarantines_wrong_shaped_state(grabs, monkeypatch):
+    d = grabs[0].parent
+    (d / ".processed.json").write_text(json.dumps({grabs[0].name: True}))  # object, not list
+    monkeypatch.setattr("app.ledger.api.record_grab", lambda row, ans: None)
+    w = GrabWatcher(d, client=FakeD1(), items_fn=lambda: ITEMS, settle_s=0)
+    assert grabs[0].name in w.poll_once()  # not silently skipped
+    assert list(d.glob(".processed.corrupt-*.json"))
+
+
+def test_watcher_fails_closed_without_item_list(grabs, monkeypatch):
+    calls = []
 
     def no_db():
         raise OSError("connection refused")
 
-    monkeypatch.setattr("app.ledger.api.record_grab", lambda row, ans: None)
-    GrabWatcher(grabs[0].parent, client=Spy(), items_fn=no_db, settle_s=0).poll_once()
-    assert set(seen[0]) == {"pepperoni", "cheese", "dough", "sauce", "none"}
+    monkeypatch.setattr("app.ledger.api.record_grab", lambda row, ans: calls.append(row))
+    w = GrabWatcher(grabs[0].parent, client=FakeD1(), items_fn=no_db, settle_s=0)
+    assert w.poll_once() == [] and calls == []          # never guesses items from zone names
+    w.items_fn = lambda: ITEMS
+    assert len(w.poll_once()) == len(grabs)             # recovers once the DB is back
 
 
 def test_watcher_waits_for_folder_to_settle(grabs, monkeypatch):

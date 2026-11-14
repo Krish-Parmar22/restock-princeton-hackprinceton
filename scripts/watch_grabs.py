@@ -29,7 +29,7 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    w = GrabWatcher(a.dir, settle_s=0 if a.once else 1.0)
+    w = GrabWatcher(a.dir, settle_s=1.0)  # settle in --once too: never read a half-copied package
     logging.info("d1 backend: %s, autolog threshold %.2f", settings.d1_backend, settings.autolog_min_prob)
     if a.once:
         done = w.poll_once()

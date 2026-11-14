@@ -1,7 +1,10 @@
 """Poll the grabs folder and push every new complete grab package through d1 into the ledger.
 
-Processed grab_ids live in <grabs_dir>/.processed.json so restarts don't redo work
-(record_grab is idempotent on grab_id as well).
+Processed packages (keyed by FOLDER name) live in <grabs_dir>/.processed.json so restarts
+don't redo work (record_grab is also idempotent on grab_id). Failures retry with backoff
+forever, never a permanent skip, and are listed in <grabs_dir>/.failed.json for visibility.
+A package is only read once its files have stopped changing for `settle_s` AND every image
+decodes, so a half-copied package is never sent to d1.
 """
 from __future__ import annotations
 
@@ -20,7 +23,8 @@ from app.grabs.checks import check_grab
 log = logging.getLogger("grabs.watcher")
 
 PROCESSED_FILE = ".processed.json"
-MAX_FAILURES = 3  # per grab per process; after this we stop retrying until restart
+FAILED_FILE = ".failed.json"
+MAX_BACKOFF_S = 300.0
 
 
 def items_from_db() -> list[str]:
@@ -45,6 +49,7 @@ class GrabWatcher:
         items_fn: Callable[[], list[str]] = items_from_db,
         record_fn: Callable[[dict, list[dict]], None] = _record,
         settle_s: float = 1.0,
+        backoff_base_s: float = 2.0,
     ):
         self.dir = Path(grabs_dir or settings.grabs_dir)
         if client is None:
@@ -53,19 +58,27 @@ class GrabWatcher:
             client = get_client()
         self.client = client
         self.items_fn, self.record_fn, self.settle_s = items_fn, record_fn, settle_s
+        self.backoff_base_s = backoff_base_s
         self.state_path = self.dir / PROCESSED_FILE
         self.processed: set[str] = self._load_state()
-        self.failures: dict[str, int] = {}
+        self.failures: dict[str, dict] = {}  # folder name -> {"count", "next_try", "error"}
 
     # ---------- state ----------
     def _load_state(self) -> set[str]:
+        """Must be a JSON list of strings. Anything else is quarantined (never guessed at):
+        reprocessing is safe because record_grab is idempotent."""
         try:
-            return set(json.loads(self.state_path.read_text()))
+            data = json.loads(self.state_path.read_text())
         except FileNotFoundError:
             return set()
-        except (json.JSONDecodeError, TypeError):
-            log.warning("ignoring unreadable %s", self.state_path)
-            return set()
+        except (json.JSONDecodeError, OSError):
+            data = None
+        if isinstance(data, list) and all(isinstance(x, str) for x in data):
+            return set(data)
+        bad = self.state_path.with_name(f".processed.corrupt-{int(time.time())}.json")
+        os.replace(self.state_path, bad)
+        log.error("unreadable %s moved to %s; reprocessing (record_grab is idempotent)", self.state_path, bad.name)
+        return set()
 
     def _save_state(self) -> None:
         tmp = self.state_path.with_suffix(".tmp")
@@ -73,6 +86,32 @@ class GrabWatcher:
         os.replace(tmp, self.state_path)
 
     # ---------- discovery ----------
+    def _save_failures(self) -> None:
+        tmp = self.dir / (FAILED_FILE + ".tmp")
+        tmp.write_text(json.dumps(self.failures, indent=1, default=str))
+        os.replace(tmp, self.dir / FAILED_FILE)
+
+    def _fail(self, key: str, err: Exception) -> None:
+        f = self.failures.get(key, {"count": 0})
+        f["count"] += 1
+        f["error"] = f"{type(err).__name__}: {err}"[:300]
+        f["next_try"] = time.time() + min(self.backoff_base_s * 2 ** (f["count"] - 1), MAX_BACKOFF_S)
+        self.failures[key] = f
+        self._save_failures()
+        log.error("%s failed (attempt %d, retrying): %s", key, f["count"], f["error"])
+
+    @staticmethod
+    def _images_ok(pkg: GrabPackage) -> bool:
+        from PIL import Image
+
+        try:
+            for p in (pkg.before, *pkg.during, pkg.after):
+                with Image.open(p) as im:
+                    im.verify()
+            return True
+        except Exception:
+            return False
+
     def _settled(self, folder: Path) -> bool:
         """True when no file in the folder changed in the last settle_s (still copying otherwise)."""
         if self.settle_s <= 0:
@@ -86,7 +125,10 @@ class GrabWatcher:
             return []
         out = []
         for folder in sorted(p for p in self.dir.iterdir() if p.is_dir() and not p.name.startswith(".")):
-            if folder.name in self.processed or self.failures.get(folder.name, 0) >= MAX_FAILURES:
+            if folder.name in self.processed:
+                continue
+            f = self.failures.get(folder.name)
+            if f and time.time() < f["next_try"]:
                 continue
             try:
                 if not self._settled(folder):
@@ -94,26 +136,22 @@ class GrabWatcher:
                 pkg = GrabPackage.load(folder)
             except (ValueError, OSError):
                 continue  # incomplete or half-written; try again next poll
-            if pkg.meta.grab_id in self.processed:
-                continue
+            if not self._images_ok(pkg):
+                continue  # all files present but an image is still half-written
             out.append(pkg)
         return out
 
-    def _items(self, pkgs: list[GrabPackage]) -> list[str]:
+    def _items(self) -> list[str] | None:
+        """The shop's real item list, or None. Never guessed from zone names (fail closed)."""
         try:
             items = self.items_fn()
-            if items:
-                return items
-            log.warning("items table is empty; falling back to zone names")
         except Exception as e:  # DB down or not migrated
-            log.warning("items unavailable (%s); falling back to zone names", type(e).__name__)
-        zones = {p.meta.zone for p in pkgs}
-        for folder in self.dir.iterdir():
-            try:
-                zones.add(json.loads((folder / "meta.json").read_text())["zone"])
-            except Exception:
-                pass
-        return sorted(zones)
+            log.error("item list unavailable (%s); will retry next poll", type(e).__name__)
+            return None
+        if not items:
+            log.error("items table is empty; seed it first. Will retry next poll")
+            return None
+        return items
 
     # ---------- processing ----------
     def poll_once(self) -> list[str]:
@@ -121,19 +159,21 @@ class GrabWatcher:
         pkgs = self.pending()
         if not pkgs:
             return []
-        items = self._items(pkgs)
+        items = self._items()
+        if items is None:
+            return []
         done = []
         for pkg in pkgs:
-            gid = pkg.meta.grab_id
+            gid, key = pkg.meta.grab_id, pkg.before.parent.name  # key = folder name, everywhere
             try:
                 row, answers = check_grab(pkg, items, self.client)
                 self.record_fn(row, answers)
             except Exception as e:
-                self.failures[gid] = self.failures.get(gid, 0) + 1
-                log.error("%s failed (%d/%d): %s", gid, self.failures[gid], MAX_FAILURES, e)
+                self._fail(key, e)
                 continue
-            self.processed.add(gid)
-            self.processed.add(pkg.before.parent.name)  # folder name, in case it differs from grab_id
+            self.processed.add(key)
+            if self.failures.pop(key, None) is not None:
+                self._save_failures()
             self._save_state()
             done.append(gid)
             conf = f"{row['confidence']:.2f}" if row["confidence"] is not None else "-"
