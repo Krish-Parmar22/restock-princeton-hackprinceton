@@ -15,7 +15,7 @@
 ## What we learned on site
 - They track inventory by hand in Excel, and the person who does it spends hours on it.
 - We could film **only the drinks fridge out front**; the kitchen and back rooms were off-limits. So we deployed on drinks, where one can = one unit makes every count exact and checkable.
-- We were on site for about 4 hours. We set up a webcam on the counter, drew boxes for Sprite and limonada fresca in the browser editor, and watched real grabs come in.
+- We were on site for about 3 hours. We set up a webcam on the counter, drew boxes for Sprite and limonada fresca in the browser editor, and watched real grabs come in.
 
 ## What we changed because of the visit
 - **Exact can counts:** d1 is asked "1, 2, 3, or more?" instead of "pinch or handful". "More" goes to the owner and is never guessed.
