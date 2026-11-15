@@ -24,7 +24,7 @@ from app.ledger.seed import seed  # noqa: E402
 
 # item -> (par, count). The SECOND take crosses par, so the judge sees one normal grab, then the alert:
 # cheese handful = 0.3 lb (15.5 -> 15.2 -> 14.9 < 15); cans/bottles = 1 each (par + 1 -> par -> below).
-EDGE = {"cheese": (15, 15.5), "sprite": (6, 7), "pineapple_juice": (4, 5)}
+EDGE = {"cheese": (15, 15.5), "sprite": (10, 11), "pineapple_juice": (4, 5)}
 EXTRA_ITEMS = {"pineapple_juice": ("each", 2.50)}
 THREAD_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
 
