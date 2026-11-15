@@ -9,7 +9,7 @@ def test_dashboard_renders_and_confirms_in_demo_mode(monkeypatch):
     subs = [s.value for s in at.subheader]
     ok = lambda: next(x.value for x in at.subheader if x.value.startswith("Needs your OK"))
     assert subs[0] == "Stock" and "Reorder" in subs and ok().startswith("Needs your OK (3)")
-    assert "Where the food went" in subs and any("iMessage" in s for s in subs)
+    assert "Where the food went" in subs
     # one tap on a flagged grab: "nothing taken"
     submit = next(b for b in at.button if "Nothing taken" in str(b.label))
     submit.click().run()
@@ -17,7 +17,7 @@ def test_dashboard_renders_and_confirms_in_demo_mode(monkeypatch):
     assert ok().startswith("Needs your OK (2)")
     assert any("Text me this plan" in str(b.label) for b in at.button)
     assert any("morning debrief" in str(b.label) for b in at.button)
-    assert any("Under the hood" in x.value for x in at.subheader)
+
 
 
 def test_password_gate_hides_everything_until_entered(monkeypatch):

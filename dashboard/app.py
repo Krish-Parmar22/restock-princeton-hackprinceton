@@ -298,62 +298,57 @@ if variance:
 else:
     st.caption("No variance data for these dates.")
 
-# ---------- the iMessage thread ----------
-st.subheader("📱 iMessage with the owner (Photon)")
-st.caption("Both sides of the real thread. Every agent text is fact-checked by d1 before it's sent; low scores are softened or blocked.")
+# ---------- behind the scenes (for judges): the iMessage thread + the deepagents run ----------
 try:
     msgs = load("messages", 60)
-except ApiError as e:
+except ApiError:
     msgs = []
-    st.error(str(e))
-if msgs:
-    out = [m for m in msgs if m["decision"] != "received"]
-    counts = pd.Series([m["decision"] for m in out]).value_counts() if out else pd.Series(dtype=int)
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Sent", int(counts.get("sent", 0)))
-    m2.metric("Softened", int(counts.get("softened", 0)))
-    m3.metric("Blocked by d1", int(counts.get("blocked", 0)))
-    for m in reversed(msgs[:30]):   # oldest first, like a phone
-        when = datetime.fromisoformat(str(m["ts"]).replace("Z", "+00:00")).strftime("%-I:%M %p")
-        if m["decision"] == "received":
-            with st.chat_message("user", avatar="🧑‍🍳"):
-                st.markdown(f"{m['text']}  \n<span style='opacity:.5;font-size:.75rem'>{when}</span>", unsafe_allow_html=True)
-        else:
-            tag = {"sent": "", "softened": " · 🟡 softened by d1", "blocked": " · 🔴 blocked by d1 (never sent)"}.get(m["decision"], "")
-            score = f" · d1 {m['d1_score']:.2f}" if m.get("d1_score") is not None else ""
-            with st.chat_message("assistant", avatar="🍕"):
-                body = m["text"] if m["decision"] != "blocked" else f"~~{m['text']}~~"
-                st.markdown(f"{body}  \n<span style='opacity:.5;font-size:.75rem'>{when}{score}{tag}</span>",
-                            unsafe_allow_html=True)
-else:
-    st.caption("No messages yet. Text the line from your phone, or press 'Text me the morning debrief'.")
-
-
-# ---------- under the hood: the deepagents run ----------
-st.subheader("🧠 Under the hood: how the agent decided")
-st.caption("The agent's latest run, read live from its LangGraph state: LangChain deepagents delegating to subagents, "
-           "calling tools, saving files, the d1 fact-check on every text, and pausing for the owner's approval.")
 try:
     trace = load("trace")
-except ApiError as e:
+except ApiError:
     trace = {"steps": []}
-    st.error(str(e))
-ICON = {"trigger": "📨", "parallel": "⚡", "subagent": "🤖", "subagent_result": "📋", "tool": "🔧", "file": "📁",
-        "plan": "🗒️", "draft": "✍️", "guard": "🛡️", "approval": "✋", "paused": "⏸️", "reply": "💬"}
-if trace.get("steps"):
-    for s_ in trace["steps"]:
-        k = s_["kind"]
-        head = {"trigger": "Trigger", "parallel": "Delegation", "subagent": f"Subagent **{s_.get('name')}**",
-                "subagent_result": f"**{s_.get('name')}** reported", "tool": f"Tool `{s_.get('name')}`",
-                "file": f"File `{s_.get('name')}`", "plan": "Plan (todos)", "draft": "Draft text",
-                "guard": "d1 guard", "approval": "Reorder needs approval", "paused": "Human in the loop",
-                "reply": "Reply"}.get(k, k)
-        if k == "guard" and not s_.get("ok", True):
-            head = "d1 guard **blocked** a claim; the agent rewrote it"
-        if k in ("subagent_result", "draft"):
-            with st.expander(f"{ICON.get(k, '•')} {head}", expanded=k == "draft"):
-                st.markdown(s_["text"])
-        else:
-            st.markdown(f"{ICON.get(k, '•')} {head}: {s_['text']}")
-else:
-    st.caption("No agent run yet. Text the line, or press 'Text me the morning debrief'.")
+if msgs or trace.get("steps"):
+    with st.expander("Behind the scenes (for judges): the iMessage thread and how the agent decided", expanded=False):
+        st.subheader("📱 iMessage with the owner (Photon)")
+        st.caption("Both sides of the real thread. Every agent text is fact-checked by d1 before it's sent; low scores are softened or blocked.")
+        if msgs:
+            out = [m for m in msgs if m["decision"] != "received"]
+            counts = pd.Series([m["decision"] for m in out]).value_counts() if out else pd.Series(dtype=int)
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Sent", int(counts.get("sent", 0)))
+            m2.metric("Softened", int(counts.get("softened", 0)))
+            m3.metric("Blocked by d1", int(counts.get("blocked", 0)))
+            for m in reversed(msgs[:30]):   # oldest first, like a phone
+                when = datetime.fromisoformat(str(m["ts"]).replace("Z", "+00:00")).strftime("%-I:%M %p")
+                if m["decision"] == "received":
+                    with st.chat_message("user", avatar="🧑‍🍳"):
+                        st.markdown(f"{m['text']}  \n<span style='opacity:.5;font-size:.75rem'>{when}</span>", unsafe_allow_html=True)
+                else:
+                    tag = {"sent": "", "softened": " · 🟡 softened by d1", "blocked": " · 🔴 blocked by d1 (never sent)"}.get(m["decision"], "")
+                    score = f" · d1 {m['d1_score']:.2f}" if m.get("d1_score") is not None else ""
+                    with st.chat_message("assistant", avatar="🍕"):
+                        body = m["text"] if m["decision"] != "blocked" else f"~~{m['text']}~~"
+                        st.markdown(f"{body}  \n<span style='opacity:.5;font-size:.75rem'>{when}{score}{tag}</span>",
+                                    unsafe_allow_html=True)
+
+
+        st.subheader("🧠 Under the hood: how the agent decided")
+        st.caption("The agent's latest run, read live from its LangGraph state: LangChain deepagents delegating to subagents, "
+                   "calling tools, saving files, the d1 fact-check on every text, and pausing for the owner's approval.")
+        ICON = {"trigger": "📨", "parallel": "⚡", "subagent": "🤖", "subagent_result": "📋", "tool": "🔧", "file": "📁",
+                "plan": "🗒️", "draft": "✍️", "guard": "🛡️", "approval": "✋", "paused": "⏸️", "reply": "💬"}
+        if trace.get("steps"):
+            for s_ in trace["steps"]:
+                k = s_["kind"]
+                head = {"trigger": "Trigger", "parallel": "Delegation", "subagent": f"Subagent **{s_.get('name')}**",
+                        "subagent_result": f"**{s_.get('name')}** reported", "tool": f"Tool `{s_.get('name')}`",
+                        "file": f"File `{s_.get('name')}`", "plan": "Plan (todos)", "draft": "Draft text",
+                        "guard": "d1 guard", "approval": "Reorder needs approval", "paused": "Human in the loop",
+                        "reply": "Reply"}.get(k, k)
+                if k == "guard" and not s_.get("ok", True):
+                    head = "d1 guard **blocked** a claim; the agent rewrote it"
+                if k in ("subagent_result", "draft"):
+                    with st.expander(f"{ICON.get(k, '•')} {head}", expanded=k == "draft"):
+                        st.markdown(s_["text"])
+                else:
+                    st.markdown(f"{ICON.get(k, '•')} {head}: {s_['text']}")
