@@ -279,13 +279,11 @@ def briefing_facts(day: str | None = None) -> str:
     trend = [r for r in ledger.usage_trend(y) if r["typical"] > 0 and r["change_pct"] is not None]
     top = max(trend, key=lambda r: abs(r["change_pct"]), default=None)
     flagged = len(ledger.list_grabs(y, "flagged")) + (len(ledger.list_grabs(today, "flagged")) if y != today else 0)
-    plan = ledger.reorder_plan()
-    fc = [f for f in ledger.demand_forecast(3) if f["order_to_cover"] > 0]
-    order = {p["item"]: {"item": p["item"], "qty": p["order_qty"], "unit": p["unit"], "cost": p["cost"]} for p in plan}
-    for f in fc:
-        if f["item"] not in order or f["order_to_cover"] > order[f["item"]]["qty"]:
-            order[f["item"]] = {"item": f["item"], "qty": f["order_to_cover"], "unit": f["unit"], "cost": f["cost"]}
-    items = sorted(order.values(), key=lambda o: -o["cost"])
+    # Order only what is below par right now; the forecast is a heads-up, not an order to approve.
+    items = sorted(({"item": p["item"], "qty": p["order_qty"], "unit": p["unit"], "cost": p["cost"]}
+                    for p in ledger.reorder_plan()), key=lambda o: -o["cost"])
+    soon = sorted((r for r in ledger.usage_trend(y) if r["days_of_stock"] is not None and r["days_of_stock"] < 3
+                   and r["on_hand"] >= r["par"]), key=lambda r: r["days_of_stock"])[:2]
     total = round(sum(o["cost"] for o in items), 2)
     lines = ["Good morning! Here's your debrief:"]
     if top:
@@ -296,8 +294,11 @@ def briefing_facts(day: str | None = None) -> str:
         lines.append("Yesterday looked like a normal day.")
     lines.append(f"{flagged} camera grab{'s' if flagged != 1 else ''} need your OK." if flagged else "No grabs need your OK.")
     lines.append(f"Planned order: " + ", ".join(f"{o['qty']:g} {o['item'].replace('_', ' ')}" for o in items)
-                 + f" (${total:,.2f})." if items else "Nothing needs ordering.")
-    return _j({"day": y.isoformat(), "biggest_change": top, "grabs_need_ok": flagged,
+                 + f" (${total:,.2f})." if items else "Nothing needs ordering today.")
+    if soon:
+        lines.append("Heads up: " + ", ".join(f"{r['item'].replace('_', ' ')} runs out in about {r['days_of_stock']:g} days"
+                                              for r in soon) + " at this pace.")
+    return _j({"day": y.isoformat(), "biggest_change": top, "grabs_need_ok": flagged, "running_low_soon": soon,
                "order": items, "order_total": total, "suggested_text": "\n".join(lines)})
 
 

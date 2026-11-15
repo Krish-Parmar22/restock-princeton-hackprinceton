@@ -38,7 +38,7 @@ def test_below_par_alerts_known_chats_once(db):
     api.remember_chat("owner-1", "+1555")
     out = alerts.check_and_alert(send)
     assert len(out) == 1 and out[0]["item"] == "pepperoni"
-    assert "8 lb" in sent[0].text and "par of 10" in sent[0].text and 'reorder pepperoni' in sent[0].text
+    assert "8 lb" in sent[0].text and "(par 10)" in sent[0].text and "Reply yes or no" in sent[0].text
     assert alerts.check_and_alert(send) == []                    # cooldown: not re-texted every grab
     assert api.list_messages(5)[0].decision == "sent"
 

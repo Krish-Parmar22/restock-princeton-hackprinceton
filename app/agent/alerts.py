@@ -25,10 +25,19 @@ def _fmt(x: float) -> str:
     return f"{x:g}"
 
 
-def below_par_text(row) -> str:
-    gap = max(0.0, row.par - row.on_hand)
-    return (f"Heads up: {row.item} is at {_fmt(row.on_hand)} {row.unit}, below your par of {_fmt(row.par)} "
-            f"({_fmt(round(gap, 2))} {row.unit} short). Want me to reorder? Reply \"reorder {row.item}\".")
+def _offer(row) -> dict | None:
+    return next((p for p in ledger.reorder_plan() if p["item"] == row.item), None)
+
+
+def below_par_text(row, offer: dict | None = None) -> str:
+    """One text that asks the question, so a single "yes" places the reorder (see runtime offers)."""
+    name = row.item.replace("_", " ")
+    unit = "" if row.unit == "each" else f" {row.unit}"
+    head = (f"We're out of {name}." if row.on_hand <= 0 else
+            f"Heads up: we're down to {_fmt(row.on_hand)}{unit} {name} (par {_fmt(row.par)}).")
+    if offer:
+        return head + f" Reorder {_fmt(offer['order_qty'])}{unit} for ${offer['cost']:,.2f}? Reply yes or no."
+    return head + " Want me to reorder?"
 
 
 def check_and_alert(send=None) -> list[dict]:
@@ -41,7 +50,8 @@ def check_and_alert(send=None) -> list[dict]:
     for row in ledger.get_inventory():
         if not row.below_par:
             continue
-        text = below_par_text(row)
+        offer = _offer(row)
+        text = below_par_text(row, offer)
         photo = None
         for chat in chats:
             if ledger.recently_alerted("below_par", row.item, ALERT_COOLDOWN_H, chat_id=chat):
@@ -53,6 +63,8 @@ def check_and_alert(send=None) -> list[dict]:
                                   [] if ok else [{"claim": "bridge refused", "error": err}])
             if ok:
                 ledger.record_alert("below_par", row.item, chat, text)
+                if offer:   # the owner's next plain "yes" places exactly this order (runtime._answer_offer)
+                    ledger.record_alert("reorder_offer", row.item, chat, f"{offer['order_qty']:g}")
                 sent.append({"chat_id": chat, "item": row.item, "text": text})
             else:
                 log.warning("alert to %s not delivered: %s", chat, err)

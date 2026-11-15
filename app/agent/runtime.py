@@ -208,7 +208,50 @@ def handle_inbound(msg: InboundMessage) -> InboundReply:
     gate = _security_gate(agent, msg)
     if gate is not None:
         return gate
+    offer = _answer_offer(agent, msg)
+    if offer is not None:
+        return offer
     return run_inbound(agent, msg)
+
+
+OFFER_MINUTES = 120
+
+
+def _answer_offer(agent, msg: InboundMessage) -> InboundReply | None:
+    """The alert asked "Reorder 5 for $12.50? Reply yes or no." A plain yes/no answers it right here
+    (no model): yes places exactly that order (on order, approved), no declines. Only when no agent
+    approval is pending, so it never steals a "yes" meant for something else."""
+    ans = approval_answer(msg.text)
+    if ans is None:
+        return None
+    if pending_approval(agent, {"configurable": {"thread_id": msg.chat_id}}):
+        return None
+    from app.ledger import api as ledger
+    from app.ledger.impl import _conn
+    with _conn() as c:
+        r = c.execute("""SELECT a.id, i.name, a.text FROM alerts a JOIN items i ON i.id = a.item_id
+                         WHERE a.kind = 'reorder_offer' AND a.chat_id = %s
+                           AND a.ts > now() - make_interval(mins => %s)
+                         ORDER BY a.ts DESC LIMIT 1""", (msg.chat_id, OFFER_MINUTES)).fetchone()
+        if r is None:
+            return None
+        c.execute("UPDATE alerts SET kind = 'reorder_offer_answered' WHERE id = %s", (r["id"],))
+    item, qty = r["name"], float(r["text"])
+    name = item.replace("_", " ")
+    if not ans:
+        reply = f"OK, not ordering {name}."
+        ledger.record_message(msg.chat_id, reply, None, "sent", [])
+        return InboundReply(reply=reply)
+    oid = ledger.draft_order(item, qty, msg.chat_id)
+    ledger.set_order_status(oid, "approved")
+    row = next(o for o in ledger.list_orders(10) if o["id"] == oid)
+    reply = (f"Done: {qty:g} {name} on order (${row['cost']:,.2f}). "
+             f"I'll update the sheet when the delivery comes in.")
+    ledger.record_message(msg.chat_id, reply, None, "sent", [])
+    with context.run_context(msg.chat_id, inbound=True) as ctx:
+        ctx.sheet_changes.append(f"{qty:g} {item} on order")
+        images = _sheet_picture(ctx)
+    return InboundReply(reply=reply, images=[i for i in images if allowed_image(i)])
 
 
 def _note(agent, chat_id: str, text: str) -> None:

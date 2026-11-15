@@ -256,3 +256,20 @@ def test_briefing_facts_are_computed_not_counted_by_the_model(db):
     f = json.loads(briefing_facts.invoke({}))
     assert f["grabs_need_ok"] == 1 and "1 camera grab need" in f["suggested_text"]
     assert f["order"] and f["order"][0]["item"] == "coke" and f"${f['order_total']:,.2f}" in f["suggested_text"]
+
+
+def test_one_yes_answers_the_alerts_reorder_offer(db, monkeypatch):
+    """Alert: "Reorder 8 for $8.00? Reply yes or no." -> "yes" places exactly that, in code."""
+    from app.agent import alerts
+    from app.ledger import api
+    api.remember_chat("owner-x", "+1")
+    sent = []
+    out = alerts.check_and_alert(lambda req: (sent.append(req) or True, None))
+    assert out and "Reorder 8 for $8.00? Reply yes or no." in sent[0].text      # coke 4 on hand, par 6 -> 2x par
+    monkeypatch.setattr(runtime, "pending_approval", lambda agent, cfg: [])
+    msg = lambda t: InboundMessage(chat_id="owner-x", sender="+1", text=t, ts=datetime.now(timezone.utc))
+    r = runtime._answer_offer(object(), msg("yes"))
+    assert r.reply.startswith("Done: 8 coke on order ($8.00)")
+    assert [o["status"] for o in api.list_orders()] == ["approved"]
+    assert runtime._answer_offer(object(), msg("yes")) is None, "an offer is answered once"
+    assert runtime._answer_offer(object(), msg("how much coke?")) is None
