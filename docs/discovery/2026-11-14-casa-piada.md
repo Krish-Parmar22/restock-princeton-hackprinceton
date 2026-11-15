@@ -14,6 +14,7 @@
 
 ## What we learned on site
 - They track inventory by hand in Excel, and the person who does it spends hours on it.
+- **Savings:** by their numbers, Restock would save them about $600.
 - We could film **only the drinks fridge out front**; the kitchen and back rooms were off-limits. So we deployed on drinks, where one can = one unit makes every count exact and checkable.
 - We were on site for about 3 hours. We set up a webcam on the counter, drew boxes for Sprite and limonada fresca in the browser editor, and watched real grabs come in.
 
