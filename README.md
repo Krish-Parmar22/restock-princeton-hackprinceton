@@ -66,17 +66,6 @@ uv run python scripts/setup_authenticator.py                           # once: l
 ```
 Keys go in `.env` (see `.env.example`): `OPENROUTER_API_KEY` (agent model + d1), `AGENT_MODEL=openrouter:openai/gpt-oss-120b`, `D1_BACKEND=openrouter`, `LANGSMITH_API_KEY`. Photon: `photon-bridge/.env`.
 
-## Tests
-```bash
-uv run pytest -q                              # 125 unit/integration tests, no paid APIs
-RUN_E2E=1 uv run pytest tests/e2e -q -s       # real models end to end -> docs/e2e-report.md
-(cd hardware && uv run --project .. python -m pytest -q tests)   # 39 Pi tests
-(cd dashboard && uv run pytest -q)            # 10
-(cd photon-bridge && npm test)                # 25
-```
-
 ## Docs
 - `docs/discovery/2026-11-14-casa-piada.md`: the restaurant, who we worked with, the evidence
 - `docs/architecture.md`, `docs/handoff.md`: design, camera ↔ laptop contract
-- `docs/e2e-report.md`: the latest real-model run
-- `docs/guard-calibration.md`: how the fact-check guard was calibrated
