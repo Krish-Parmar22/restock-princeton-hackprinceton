@@ -41,11 +41,29 @@ def grabs(day: date | None = Query(None, alias="date"), status: str = "all"):
 @router.post("/api/grabs/{grab_id}/confirm", response_model=GrabRow)
 def confirm(grab_id: str, body: GrabConfirm):
     try:
-        return ledger.confirm_grab(grab_id, body)
+        row = ledger.confirm_grab(grab_id, body)
+        _after_change()   # a confirmed take can cross par: same alert + sheet refresh as a camera grab
+        return row
     except KeyError as e:
         raise HTTPException(404, str(e)) from None
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
+
+
+def _after_change() -> None:
+    import threading
+
+    def run():
+        try:
+            from app.agent.alerts import check_and_alert
+            check_and_alert()
+        finally:
+            try:
+                from app import sheet
+                sheet.refresh("confirmed on dashboard")
+            except Exception:
+                pass
+    threading.Thread(target=run, daemon=True, name="after-confirm").start()
 
 
 @router.get("/api/orders")
