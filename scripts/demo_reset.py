@@ -36,6 +36,10 @@ def main() -> None:
     with connect(a.url) as c:
         phones = [r["chat_id"] for r in c.execute("SELECT chat_id, sender FROM chats WHERE chat_id LIKE 'pho_%'").fetchall()]
         senders = {r["chat_id"]: r["sender"] for r in c.execute("SELECT chat_id, sender FROM chats WHERE chat_id LIKE 'pho_%'").fetchall()}
+    with connect(a.url) as c:   # the real Casa Piada grabs (re-checked by d1): keep them in "Needs your OK"
+        shop = c.execute("SELECT * FROM grab_events WHERE grab_id LIKE '%%-shop'").fetchall()
+        shop_ans = c.execute("SELECT grab_id, question_id, answer, probs FROM d1_answers WHERE grab_id LIKE '%%-shop'").fetchall()
+        shop_items = {r["id"]: r["name"] for r in c.execute("SELECT id, name FROM items").fetchall()}
     seed(a.url, reset=True)
     with connect(a.url) as c:
         # the seeded week runs through tonight; drop anything after "now" or it eats stock as the clock passes
@@ -53,6 +57,19 @@ def main() -> None:
         c.execute("""INSERT INTO counts (ts, item_id, qty, source)
                      SELECT now(), id, par * 2, 'demo_reset' FROM items
                      WHERE name <> ALL(%s)""", (list(EDGE),))
+        from psycopg.types.json import Jsonb
+        ids = {r["name"]: r["id"] for r in c.execute("SELECT id, name FROM items").fetchall()}
+        for g in shop:
+            item = shop_items.get(g["item_id"])
+            c.execute("""INSERT INTO grab_events (grab_id, zone, camera_id, source, t_start, t_end, item_id, action,
+                                                  qty_label, qty, confidence, status, frames)
+                         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                      (g["grab_id"], g["zone"], g["camera_id"], g["source"], g["t_start"], g["t_end"],
+                       ids.get(item) if item else None, g["action"], g["qty_label"], g["qty"], g["confidence"],
+                       g["status"], Jsonb(g["frames"])))
+        for x in shop_ans:
+            c.execute("INSERT INTO d1_answers (grab_id, question_id, answer, probs) VALUES (%s,%s,%s,%s)",
+                      (x["grab_id"], x["question_id"], x["answer"], Jsonb(x["probs"])))
         for chat in phones:
             c.execute("INSERT INTO chats (chat_id, sender) VALUES (%s, %s) ON CONFLICT DO NOTHING", (chat, senders.get(chat)))
         for t in THREAD_TABLES:   # fresh conversation for the demo
