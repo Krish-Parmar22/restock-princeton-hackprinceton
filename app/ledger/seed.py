@@ -40,6 +40,23 @@ DRINK_ON_HAND = {"coke": 31, "sprite": 5, "diet_coke": 28, "water": 44, "sicilia
                  "siciliana_limonata": 35, "fresca": 16, "sparkling_water": 28, "ice_tea_peach": 15,
                  "ice_tea_lemon": 31}
 DRINK_START_COUNT = 24   # fallback for a drink missing from DRINK_ON_HAND
+
+# What an Italian piadina shop with an espresso bar also stocks (Casa Piada-style), beyond the pizza
+# make-line above. Bulk food: pinch/handful/whole_container amounts; counted items: exact counts.
+# No sales/grab history: opening counts only. (unit, unit_cost, par, qty_per_label, opening count)
+COUNT_QPL = {"1": 1, "2": 2, "3": 3, "pinch": 1, "handful": 2, "whole_container": 10}
+SHOP_EXTRAS = [
+    ("piadina_bread", "each", 0.45, 40, COUNT_QPL, 90),
+    ("prosciutto", "lb", 14.00, 4, {"pinch": 0.03, "handful": 0.15, "whole_container": 3}, 7.5),
+    ("mozzarella", "lb", 6.50, 6, {"pinch": 0.05, "handful": 0.25, "whole_container": 5}, 11),
+    ("stracchino", "lb", 9.00, 3, {"pinch": 0.05, "handful": 0.25, "whole_container": 2}, 5),
+    ("arugula", "lb", 5.00, 2, {"pinch": 0.02, "handful": 0.1, "whole_container": 1.5}, 3.5),
+    ("tomatoes", "lb", 2.50, 5, {"pinch": 0.05, "handful": 0.3, "whole_container": 5}, 9),
+    ("nutella", "jar", 7.00, 2, {"pinch": 0.05, "handful": 0.25, "whole_container": 1}, 4),
+    ("espresso_beans", "lb", 12.00, 4, {"pinch": 0.02, "handful": 0.1, "whole_container": 2.2}, 8),
+    ("milk", "gal", 4.50, 3, {"pinch": 0.05, "handful": 0.25, "whole_container": 1}, 5),
+    ("san_pellegrino", "each", 1.25, 12, COUNT_QPL, 24),
+]
 RECIPES = {  # menu item -> {ingredient: qty per unit sold}
     "large cheese": {"dough": 1, "sauce": 0.25, "cheese": 0.5},
     "large pepperoni": {"dough": 1, "sauce": 0.25, "cheese": 0.45, "pepperoni": 0.25},
@@ -79,6 +96,12 @@ def seed(url: str | None = None, reset: bool = False, rng_seed: int = 7) -> dict
                 """INSERT INTO items (name, unit, unit_cost, par, qty_per_label) VALUES (%s, %s, %s, %s, %s)
                    ON CONFLICT (name) DO UPDATE SET unit = EXCLUDED.unit RETURNING id""",
                 (name, unit, cost, par, Jsonb(qpl))).fetchone()["id"]
+        extra_ids = {}
+        for name, unit, cost, par, qpl, _count in SHOP_EXTRAS:   # also outside `ids` (RNG stream unchanged)
+            extra_ids[name] = conn.execute(
+                """INSERT INTO items (name, unit, unit_cost, par, qty_per_label) VALUES (%s, %s, %s, %s, %s)
+                   ON CONFLICT (name) DO UPDATE SET unit = EXCLUDED.unit RETURNING id""",
+                (name, unit, cost, par, Jsonb(qpl))).fetchone()["id"]
         drink_ids = {}
         for name, unit, cost, par, dq in DRINKS:  # kept out of `ids` so the pizza week's RNG stream is unchanged
             drink_ids[name] = conn.execute(
@@ -98,6 +121,9 @@ def seed(url: str | None = None, reset: bool = False, rng_seed: int = 7) -> dict
         for name, did in drink_ids.items():
             conn.execute("INSERT INTO counts (ts, item_id, qty, source) VALUES (%s, %s, %s, 'manual')",
                          (first, did, DRINK_ON_HAND.get(name, DRINK_START_COUNT)))
+        for name, _u, _c, _p, _q, count in SHOP_EXTRAS:
+            conn.execute("INSERT INTO counts (ts, item_id, qty, source) VALUES (%s, %s, %s, 'manual')",
+                         (first, extra_ids[name], count))
         for off, delivery in DELIVERIES.items():
             d = WEEK_START + timedelta(days=off)
             for name, q in delivery.items():
