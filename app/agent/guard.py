@@ -196,9 +196,6 @@ def _swapped(claim: str, evidence: str, close) -> bool:
 
 
 def score_message(text: str, state: dict, client: D1Client) -> tuple[float, list[dict]]:
-    from app.secure import CODE_PROMPT
-    if text.strip() == CODE_PROMPT:   # the fixed security prompt states no facts
-        return 1.0, []
     claims = split_claims(text)
     if not claims:
         return 1.0, []

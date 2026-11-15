@@ -77,10 +77,6 @@ def main() -> None:
                 c.execute(f"DELETE FROM {t} WHERE thread_id = ANY(%s)", (phones,))
             except Exception:
                 pass
-        try:
-            c.execute("DELETE FROM auth_state")
-        except Exception:
-            pass
     try:
         from app import sheet
         sheet.refresh("demo reset")

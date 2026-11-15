@@ -90,10 +90,7 @@ def send_text(message: str, images: list[str] | None = None) -> str:
         return "sent"
     if not ctx.chat_id:
         return "error: no chat to send to"
-    from app import secure
     from app.agent.runtime import allowed_image
-    if secure.leaks_bank_info(ctx.chat_id, message):
-        return "BLOCKED: bank info is locked. Don't send any bank amounts."
     payload["images"] = [i for i in payload["images"] if allowed_image(i)]
     r = httpx.post(f"{settings.bridge_url}/send",
                    json=SendRequest(chat_id=ctx.chat_id, **payload).model_dump(), timeout=10)
@@ -213,27 +210,6 @@ def show_sheet() -> str:
 
 
 @tool
-def get_bank_statement(days: int = 7) -> str:
-    """SENSITIVE. The shop's bank account: balance, money in/out, largest payments, recent
-    transactions for the last `days` days. Needs the owner's authenticator code first: if it
-    returns locked, send the owner exactly the `say` text and nothing else."""
-    from app import secure
-    ctx = context.current()
-    chat = ctx.chat_id if ctx else None
-    if not secure.configured():
-        return _j({"locked": True, "say": "Bank info is turned off until the owner sets up an authenticator app."})
-    if not secure.is_unlocked(chat):
-        say = secure.CODE_PROMPT
-        if chat:
-            secure.request_code(chat, (ctx.text if ctx and ctx.text else f"bank statement for {days} days"))
-        if ctx is not None:
-            ctx.locked_say = say   # the runtime sends exactly this (no model wording, no guard rewrite)
-        return _j({"locked": True, "say": say})
-    from app import bank
-    return _j(bank.statement(days))
-
-
-@tool
 def usage_trend(day: str | None = None) -> str:
     """How a day (YYYY-MM-DD, default yesterday) compares with a normal day, per item: used vs typical
     (same weekday in past weeks, or the previous 7 days), % change, days of stock left at the recent
@@ -303,5 +279,5 @@ def briefing_facts(day: str | None = None) -> str:
 
 
 ALL_TOOLS = [get_stock, get_variance, list_grabs, d1_look, send_text, place_order, place_orders, receive_delivery,
-             correct_grab, set_par, record_count, reorder_plan, show_sheet, get_bank_statement,
+             correct_grab, set_par, record_count, reorder_plan, show_sheet,
              usage_trend, demand_forecast, flagged_grabs, briefing_facts]

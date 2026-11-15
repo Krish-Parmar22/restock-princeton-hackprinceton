@@ -124,9 +124,7 @@ def run_inbound(agent, msg: InboundMessage, d1_client=None) -> InboundReply:
             agent.invoke({"messages": [{"role": "user", "content": msg.text}]}, config, version="v2")
         texts = [m["text"] for m in ctx.outbox if not NON_ANSWERS.match(m["text"] or "")]
         images = [i for m in ctx.outbox for i in m["images"]]
-        if ctx.locked_say:   # sensitive + locked: exactly the code prompt, whatever the model wrote
-            texts = [ctx.locked_say]
-        elif not texts:  # model answered in plain text instead of send_text: guard it too
+        if not texts:  # model answered in plain text instead of send_text: guard it too
             final = _final_ai_text(agent, config)
             if final and not NON_ANSWERS.match(final):
                 from app.d1.base import get_client
@@ -140,22 +138,9 @@ def run_inbound(agent, msg: InboundMessage, d1_client=None) -> InboundReply:
     return InboundReply(reply="\n\n".join(texts) if texts else None, images=images)
 
 
-LOCKED_NOTE = "That's bank info. Reply with the 6-digit code from your authenticator app to see it."
-
-
 def _safe_out(chat_id: str | None, texts: list[str], images: list[str]) -> tuple[list[str], list[str]]:
-    """Last gate before anything reaches the owner's phone, whatever produced it."""
-    from app import secure
-    out = []
-    for t in texts:
-        if secure.leaks_bank_info(chat_id, t):
-            import logging
-            logging.getLogger(__name__).warning("blocked a bank amount on a locked chat")
-            if LOCKED_NOTE not in out:
-                out.append(LOCKED_NOTE)
-        else:
-            out.append(t)
-    return out, [i for i in images if allowed_image(i)]
+    """Last gate before anything reaches the owner's phone: only pictures we made can be attached."""
+    return texts, [i for i in images if allowed_image(i)]
 
 
 def allowed_image(path: str) -> bool:
@@ -195,19 +180,14 @@ def _final_ai_text(agent, config) -> str | None:
 
 def handle_inbound(msg: InboundMessage) -> InboundReply:
     try:  # remember who texted the line: Photon only lets us text chats that texted us first
-        from app import secure
         from app.ledger import api as ledger
         ledger.remember_chat(msg.chat_id, msg.sender)
-        shown = "•••••• (authenticator code)" if secure.looks_like_code(msg.text) else msg.text
-        ledger.record_message(msg.chat_id, shown, None, "received", [])   # owner's side of the thread
+        ledger.record_message(msg.chat_id, msg.text, None, "received", [])   # owner's side of the thread
     except Exception:
         pass
     agent = get_agent()
     if agent is None:
         return InboundReply(reply=f"(agent not configured: set AGENT_MODEL) echo: {msg.text}")
-    gate = _security_gate(agent, msg)
-    if gate is not None:
-        return gate
     offer = _answer_offer(agent, msg)
     if offer is not None:
         return offer
@@ -271,36 +251,6 @@ def _note(agent, chat_id: str, text: str) -> None:
 
 
 NON_ANSWERS = re.compile(r"^\W*\(?\s*(no reply|no response|none|n/?a)\s*\)?\W*$", re.I)
-
-
-def _security_gate(agent, msg: InboundMessage) -> InboundReply | None:
-    """Authenticator codes and "lock" are handled here, in code: a code never reaches the model."""
-    from app import secure
-    if not secure.configured():
-        return None
-    if secure.looks_like_lock(msg.text):
-        secure.lock(msg.chat_id)
-        _note(agent, msg.chat_id, "[system: the owner locked bank info. Any balance or statement numbers earlier "
-                                  "in this chat are stale and must not be repeated; call get_bank_statement for any "
-                                  "money question.]")
-        return InboundReply(reply="Locked. Bank info needs a new code next time.")
-    if not secure.looks_like_code(msg.text):
-        return None
-    res = secure.try_code(msg.chat_id, msg.text)
-    if res.status == "bad":
-        return InboundReply(reply=f"That code didn't match. {res.tries_left} "
-                                  f"{'try' if res.tries_left == 1 else 'tries'} left.")
-    if res.status == "locked_out":
-        return InboundReply(reply=f"Too many wrong codes. Bank info is locked for {res.minutes} minutes.")
-    if res.status == "reused":
-        return InboundReply(reply="That code was already used. Wait for the next one and send it.")
-    head = f"Verified. Unlocked for {res.minutes} minutes (text \"lock\" to lock it now)."
-    if not res.question:
-        return InboundReply(reply=head)
-    rerun = (f"{res.question}\n\n[system: the owner just verified with their authenticator code. Bank info is "
-             f"UNLOCKED now: call get_bank_statement again and answer from its result.]")
-    out = run_inbound(agent, InboundMessage(chat_id=msg.chat_id, sender=msg.sender, text=rerun, ts=msg.ts))
-    return InboundReply(reply=head + ("\n\n" + out.reply if out.reply else ""), images=out.images)
 
 
 def notify(agent, chat_id: str, instruction: str) -> dict:

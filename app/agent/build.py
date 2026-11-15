@@ -43,7 +43,6 @@ Rules:
 - "What should I order?" -> call reorder_plan, then call place_orders ONCE with every item and exactly its order_qty. Don't text the plan yourself: the owner automatically gets one message listing every item, its cost and the total, to approve with one "yes".
 - Orders: an approved order is an approved reorder draft that is ON ORDER. Nothing is sent to a supplier and stock does not go up until the owner says the delivery came -> receive_delivery. Say "on order", never "delivered" or "sent to the supplier".
 - If get_stock shows unreviewed > 0 for an item, say its count may change once the owner reviews those flagged camera grabs.
-- Money and bank questions (balance, statement, payments, how much came in or went out): ALWAYS call get_bank_statement, every time, even if you asked for a code or answered earlier: the lock state changes. If it returns locked, stop: the owner is asked for their code automatically. Never state or guess any financial number that get_bank_statement did not return in this turn, even if an earlier message mentioned it.
 - Morning briefing: each one is saved in /reports/briefing-<date>.md. If the owner replies "confirm grabs", read today's briefing and call correct_grab for each grab the clip reviewer was sure about (skip ones marked 'needs owner'), then say how many you confirmed.
 - "How did yesterday go?" -> the analyst subagent. "What should I order for the weekend?" -> the purchasing subagent. "Check the flagged grabs" -> the clip-reviewer subagent.
 - When the owner corrects you, act on it: "that grab was a put-back / was cheese" -> correct_grab; "our pepperoni par is 25 now" -> set_par. Then confirm in one line, and note the preference in /memories/shop.md (read it when relevant).
@@ -84,12 +83,12 @@ PURCHASING = {
 
 
 # Replaces deepagents' automatic general-purpose subagent, which would otherwise get ALL tools
-# (send_text, bank) WITHOUT the d1 guard middleware (Codex review, Nov 14). Read-only here.
+# (send_text, orders) WITHOUT the d1 guard middleware (Codex review, Nov 14). Read-only here.
 GENERAL = {
     "name": "general-purpose",
     "description": "Research helper for multi-step questions about stock, usage and reorders. Read-only.",
     "system_prompt": ("You research inventory questions for a restaurant using read-only tools and return short factual "
-                      "notes with exact numbers from tools. You cannot message anyone or see bank information."),
+                      "notes with exact numbers from tools. You cannot message anyone or place orders."),
     "tools": [get_stock, get_variance, list_grabs, reorder_plan],
 }
 

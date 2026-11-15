@@ -18,7 +18,7 @@ hardware/recordings/
 hardware/snapshots/
 *.mp4
 
-# owner sheet + authenticator QR (contains the TOTP secret): never commit
+# owner sheet: never commit
 /exports/
 
 # the one shop clip we publish on purpose (everything else stays local)

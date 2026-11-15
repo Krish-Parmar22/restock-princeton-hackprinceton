@@ -114,13 +114,3 @@ CREATE TABLE IF NOT EXISTS alerts (
     text    TEXT NOT NULL
 );
 
--- Step-up verification for bank info (app/secure.py). One row per chat + one '__owner__' row that
--- holds the owner-wide failure count, lockout and last used code (replay protection).
-CREATE TABLE IF NOT EXISTS auth_state (
-    chat_id        TEXT PRIMARY KEY,
-    unlocked_until TIMESTAMPTZ,
-    fails          INT NOT NULL DEFAULT 0,
-    locked_until   TIMESTAMPTZ,
-    pending_text   TEXT,
-    last_counter   BIGINT
-);

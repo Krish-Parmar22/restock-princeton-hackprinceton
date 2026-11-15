@@ -32,7 +32,6 @@ class Settings:
     # pinch/handful), or force "pizza" / "drinks" for every box.
     scene: str = os.getenv("SCENE", "auto")
     # Base32 secret shared with the owner's authenticator app (scripts/setup_authenticator.py).
-    owner_totp_secret: str = os.getenv("OWNER_TOTP_SECRET", "")
     # Where the live Excel sheet is written after every change (the owner opens this file).
     sheet_path: Path = Path(os.getenv("SHEET_PATH", str(ROOT / "exports" / "Inventory.xlsx"))).resolve()
     # Daily reorder-plan text at this shop-local time (America/New_York), "HH:MM". "" = off.
