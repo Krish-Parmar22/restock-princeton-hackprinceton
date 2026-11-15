@@ -84,6 +84,13 @@ def test_touched_has_no_qty_and_ignores_hand_food(pkg):
     assert (row["action"], row["qty_label"], row["status"]) == ("touched", None, "logged")
 
 
+def test_confident_touched_with_item_none_logs_against_the_zone(pkg):
+    """A touch changes no stock, so an unidentified item doesn't hold it for review."""
+    d1 = FakeD1(p=0.95, overrides={"bin_change": ("same", 0.95), "action": ("touched", 0.95), "item": ("none", 0.95)})
+    row, _ = check_grab(pkg, ITEMS, d1)
+    assert (row["action"], row["status"], row["item"]) == ("touched", "logged", pkg.meta.zone)
+
+
 def test_low_confidence_bin_change_is_flagged(pkg):
     low = settings.autolog_min_prob - 0.05
     row, _ = check_grab(pkg, ITEMS, FakeD1(p=0.95, overrides={"bin_change": ("emptier", low)}))
@@ -384,8 +391,15 @@ def test_yolo_agrees_keeps_logged_and_stores_its_vote(pkg):
 
 
 def test_yolo_sees_no_hand_flags_a_took(pkg):
-    row, _ = check_grab(pkg, ITEMS, FakeD1(p=0.95), hand_check=_hand(False))
+    """Veto applies only when d1's hand_food ALSO says no hand."""
+    row, _ = check_grab(pkg, ITEMS, FakeD1(p=0.95, overrides={"hand_food": ("no", 0.95)}), hand_check=_hand(False))
     assert row["action"] == "took" and row["status"] == "flagged"
+
+
+def test_yolo_misses_hand_but_d1_saw_it_stays_logged(pkg):
+    """Side view: the hand enters at the frame edge and YOLO misses it, but d1 saw it (live test, Nov 14)."""
+    row, _ = check_grab(pkg, ITEMS, FakeD1(p=0.95, overrides={"hand_food": ("yes", 0.9)}), hand_check=_hand(False))
+    assert row["action"] == "took" and row["status"] == "logged"
 
 
 def test_yolo_no_hand_doesnt_matter_for_touched(pkg):

@@ -167,7 +167,11 @@ def decide(answers: dict[str, D1Answer], min_prob: float, zone: str | None = Non
         reasons.append(f"bin_change={bin_ans.answer} implies {action}, but action={answers['action'].answer}")
 
     item = answers["item"].answer
-    if item == NONE_ITEM:
+    touched = action == "touched"
+    if touched:
+        # A touch changes no stock, so which item it was doesn't matter: log it against the box.
+        item = item if item not in (NONE_ITEM, None) else zone
+    elif item == NONE_ITEM:
         item = None
         reasons.append("item=none")
     elif zone and item != zone:  # the box says one ingredient, d1 saw another: owner decides
@@ -184,7 +188,7 @@ def decide(answers: dict[str, D1Answer], min_prob: float, zone: str | None = Non
     # the ingredient are the facts that move inventory, so they must be confident. The action
     # answer only has to AGREE with the bin change (checked above), and the amount is inherently
     # fuzzy, so it needs QTY_MIN_PROB, not min_prob.
-    need = {"bin_change": min_prob, "item": min_prob}
+    need = {"bin_change": min_prob} if touched else {"bin_change": min_prob, "item": min_prob}
     if "qty" in deciding:
         need["qty"] = QTY_MIN_PROB
     confidence = round(min(deciding[q].confidence for q in need), 4)
@@ -243,7 +247,11 @@ def check_grab(pkg: GrabPackage, items: list[str], client: D1Client,
             yolo = hand_check(pkg)
         except Exception as e:  # YOLO is a double-check: if it breaks, d1's answer stands, but say so
             log.warning("YOLO check failed for %s: %s", pkg.meta.grab_id, e)
-        if yolo is not None and d["action"] in ("took", "put_back") and not yolo.hand_seen:
+        d1_hand = answers.get("hand_food")
+        d1_saw_hand = d1_hand is not None and d1_hand.p_yes >= 0.6
+        # From a side view the hand often enters at the frame edge and YOLO misses it (live test, Nov 14).
+        # Veto only when NEITHER model saw a hand holding the item.
+        if yolo is not None and d["action"] in ("took", "put_back") and not yolo.hand_seen and not d1_saw_hand:
             d["reasons"].append(f"d1 says {d['action']} but YOLO saw no hand in the {pkg.meta.zone} zone")
             d["status"] = "flagged"
     m = pkg.meta

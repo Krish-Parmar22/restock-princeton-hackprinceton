@@ -25,7 +25,7 @@ class Settings:
     watcher_in_server: bool = os.getenv("WATCHER_IN_SERVER", "true").lower() in ("1", "true", "yes")
     bridge_url: str = os.getenv("BRIDGE_URL", "http://localhost:8787")
     # d1 decision thresholds (see docs/architecture.md)
-    autolog_min_prob: float = float(os.getenv("AUTOLOG_MIN_PROB", "0.80"))
+    autolog_min_prob: float = float(os.getenv("AUTOLOG_MIN_PROB", "0.75"))
     guard_send_min: float = float(os.getenv("GUARD_SEND_MIN", "0.85"))
     guard_soften_min: float = float(os.getenv("GUARD_SOFTEN_MIN", "0.65"))
     # How d1 is asked: "auto" (per box: counted items like cans get exact counts, bulk food gets
