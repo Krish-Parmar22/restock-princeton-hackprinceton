@@ -45,6 +45,7 @@ SHOP_SHEET_ITEMS = [
     ("siciliana_orange", "Siciliana drinks-Orange"), ("siciliana_limonata", "Siciliana drinks-Limonata"),
     ("fresca", "Fresca"), ("sparkling_water", "Sparkling water"), ("ice_tea_peach", "Ice Tea Peach"),
     ("ice_tea_lemon", "Ice Tea Lemon "),
+    ("san_pellegrino", "San Pellegrino"),     # added: not on their original sheet
     ("pineapple_juice", "Pineapple Juice"),   # added for our demo; not on their original sheet
 ]
 SHOP_FONT = "Times New Roman"
@@ -72,12 +73,30 @@ def shop_sheet(ws, inventory: list[dict], day: date, avg_use: dict[str, float] |
         ws[f"{col}2"].font = f()
         ws[f"{col}2"].alignment = center
     targets = [1] + list(range(3, 3 + len(rows) - 1))   # their sheet: first item on row 1, headers on row 2
+    # Everything else they stock goes on the same sheet, same columns, under its own section label
+    # (like their "Soft Drinks" label in column A), so the whole shop is on one page.
+    drinks = {k for k, _ in SHOP_SHEET_ITEMS}
+    coffee = {"espresso_beans", "milk"}
+    sections = [("Kitchen", sorted(k for k in inv if k not in drinks and k not in coffee)),
+                ("Coffee bar", sorted(k for k in inv if k in coffee))]
+    nxt = targets[-1] + 2
+    for title, keys in sections:
+        if not keys:
+            continue
+        ws[f"A{nxt}"] = title
+        ws[f"A{nxt}"].font = f(bold=True)
+        for k in keys:
+            rows.append((k, k.replace("_", " ").title()))
+            targets.append(nxt)
+            nxt += 1
+        nxt += 1
     for r, (key, name) in zip(targets, rows):
         row = inv[key]
         short = max(0.0, row["par"] - row["on_hand"] - row.get("on_order", 0))
         order = math.ceil(short)
+        unit = "" if row["unit"] == "each" else f' ({row["unit"]})'
         vals = {"B": round((avg_use or {}).get(key, 0.0), 1), "C": order if deliver_tue else 0,
-                "D": 0 if deliver_tue else order, "E": name, "G": row["on_hand"], "H": row["par"],
+                "D": 0 if deliver_tue else order, "E": name + unit, "G": row["on_hand"], "H": row["par"],
                 "I": f"=G{r}-H{r}", "J": row["unit_cost"], "K": f"=J{r}*G{r}"}
         for col, v in vals.items():
             c = ws[f"{col}{r}"]
@@ -88,7 +107,7 @@ def shop_sheet(ws, inventory: list[dict], day: date, avg_use: dict[str, float] |
         ws[f"K{r}"].number_format = "[$$]#,##0.00"
         ws[f"J{r}"].number_format = "[$$]#,##0.00"
     ws.column_dimensions["E"].width = 19.8
-    ws.conditional_formatting.add(f"I1:I{targets[-1]}", FormulaRule(formula=["I1<0"], font=Font(color="9B1C1C", bold=True)))
+    ws.conditional_formatting.add(f"I1:I{max(targets)}", FormulaRule(formula=["I1<0"], font=Font(color="9B1C1C", bold=True)))
 
 
 def _col(key: str) -> str:

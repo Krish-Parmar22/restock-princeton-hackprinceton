@@ -67,5 +67,8 @@ def test_first_tab_is_casa_piadas_own_sheet(tmp_path):
     assert (ws["E1"].value, ws["G1"].value, ws["H1"].value, ws["I1"].value, ws["K1"].value) == ("Coca Cola", 31, 20, "=G1-H1", "=J1*G1")
     assert (ws["E3"].value, ws["G3"].value, ws["H3"].value, ws["C3"].value, ws["D3"].value, ws["B3"].value) == ("Sprite", 5, 10, 5, 0, 3.0)
     assert ws["E1"].font.name == "Times New Roman" and ws["E1"].fill.fgColor.rgb.endswith("FAE2D5")
-    assert "cheese" not in str([c.value for row in ws.iter_rows() for c in row]).lower(), "soft drinks only, like theirs"
+    cells = {c.value: c.coordinate for row in ws.iter_rows() for c in row if c.value is not None}
+    assert "Kitchen" in cells and "Cheese (lb)" in cells, "the rest of the shop is on the same sheet, own section"
+    r = int(cells["Cheese (lb)"][1:])
+    assert ws[f"G{r}"].value == 20 and ws[f"H{r}"].value == 15 and ws[f"I{r}"].value == f"=G{r}-H{r}"
     assert wb.sheetnames[1] == "Inventory"
