@@ -26,8 +26,8 @@ What 3 hours of live testing showed, honestly: d1 named the right drink on every
 
 ## Architecture
 ```
- SHOP                                LAPTOP (one machine runs everything below)
- ────                                ──────────────────────────────────────────
+ SHOP: Arduino UNO Q                 LAPTOP (server, agent, dashboard)
+ ───────────────────                 ─────────────────────────────────
  webcam ──USB──▶ hardware/main.py    motion (MOG2 + frame diff) per shelf zone
  (C270)          grab cutter         → before.jpg, 6× during, after.jpg, meta.json
                  live view :8090     (browser box editor, password protected)
