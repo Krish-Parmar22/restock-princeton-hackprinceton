@@ -54,16 +54,6 @@ What 4 hours of live testing showed, honestly: d1 named the right drink on every
  photon-bridge (Node, Photon 2.0 API) ⇄ owner's iPhone (iMessage)
 ```
 
-## How we built it
-- **Day 1, Fri night:** interviewed the restaurant, picked the problem (hours a day of manual inventory into Excel), designed the pipeline, and had Codex adversarially review the architecture twice before writing code.
-- **The vision check:** we tried d1 on full frames first, and it couldn't see a small bin. We now crop to the zone, ask d1 separate questions (what changed, which item, how many), and only auto-log when every answer is confident. YOLO-World adds a cheap "was there a hand?" check.
-- **The camera code was rebuilt from failures.** Realistic-video tests caught a "before" frame taken mid-grab, long rummages split in two, a paused hand learned as background in 1.3 s, and endless motion that never ended a grab. Each became a test (`tests/test_pi_pipeline.py`).
-- **The fact-check guard:** we calibrated it on 24 labeled claims (sends 11/12 true, 0/12 false). d1 is weak at arithmetic, so numbers are checked in code and tied to the item they're said about.
-- **Photon:** our first bridge used Photon's older SDK, which rejected our 2.0 project, so we ported it to the Photon 2.0 API (`photon-bridge/src/photon2.ts`). It was verified live from a real iPhone.
-- **Security:** we had Codex attack the bank-code gate. It found 13 issues; we fixed 10. The other 3 need someone already on the laptop.
-- **Day 2, Sat:** 4 hours live at the restaurant on the drinks fridge, then fixed what we saw: exact can counts, "on order" vs "on the shelf", and the read-only subagent.
-- **Tests:** 125 core + 49 hardware + 10 dashboard + 25 bridge, plus 14 end-to-end runs on the real models.
-
 ## Run it (one laptop)
 The drinks test runs with `SCENE=drinks` (d1 is asked about cans and bottles); the default is the pizza make-line.
 ```bash
