@@ -2,7 +2,7 @@
 
 **Business:** Casa Piada, an Italian restaurant in Greenwich.
 **People consulted:**
-- **Filippo Spagnesi, manager**
+- **Filippo Spagnesi, manager.** He's the one who does the inventory, and we interviewed him on how he does it.
 - **Abel Romero Corbalan, assistant manager**
 
 ## Evidence
@@ -10,7 +10,7 @@
 - **Our webcam on their counter**, watching the drinks fridge, with the live box editor running: `docs/media/setup-drinks-fridge.jpg`
 - **The team with the restaurant staff:** `docs/media/team-and-staff.jpg`
 - **One real grab:** a 35-second clip (`docs/media/shop-grab-sprite.mp4`) and the frames d1 judged (`docs/media/grab-sprite-frames.jpg`). Someone takes a Sprite, the grab is logged automatically, and Sprite goes from 24 to 23.
-- **Quote:** _(to add: one sentence from Filippo or Abel, in their words)_
+- **Quote** (Abel, after seeing it work): "that would solve us very much." (Check the exact wording against the video.)
 
 ## What we learned on site
 - They track inventory by hand in Excel, and the person who does it spends hours on it.
