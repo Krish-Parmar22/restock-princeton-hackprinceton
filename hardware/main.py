@@ -157,9 +157,18 @@ def main():
 
         ret, frame = cap.read()
         if not ret:
-            print("[WARN] frame read failed, retrying...")
+            fails = locals().get("fails", 0) + 1
+            if fails % 20 == 1:
+                print("[WARN] frame read failed, retrying...")
+            if fails >= 15:   # ~1.5 s of dead reads: the USB link dropped (cable/hub bump). Reopen the camera.
+                cap.release()
+                time.sleep(1.0)
+                cap = open_camera(args.camera)
+                print(f"[camera] reconnecting to camera {args.camera}: {'ok' if cap.isOpened() else 'not yet'}")
+                fails = 0
             time.sleep(0.1)
             continue
+        fails = 0
 
         now = time.time()
         frame_num += 1
