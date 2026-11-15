@@ -1,6 +1,6 @@
 # dashboard
 
-What the owner (and the judges) see: stock, where the food went with camera proof, flagged grabs to confirm, what the agent said, and their Excel sheet filled in. Reads the agent API on `:8000` (contract: `docs/arnav-shah.md`).
+What the owner sees: stock, where the food went with camera proof, flagged grabs to confirm, what the agent said, and their Excel sheet filled in. Reads the agent API on `:8000` (contract: `app/contracts.py`).
 
 ## Run
 ```bash
@@ -8,7 +8,7 @@ cd dashboard
 uv sync
 uv run streamlit run app.py                         # http://localhost:8501
 uv run python export_excel.py --date 2026-11-14 --out sheet.xlsx
-uv run pytest                                       # 9 tests, incl. a full render of the app
+uv run pytest                                       # tests, incl. a full render of the app
 ```
 Settings:
 - `API_URL`: defaults to `http://localhost:8000`.
@@ -28,4 +28,4 @@ Settings:
 - An `Inventory` sheet: item, unit, par, on hand, used today, order qty, unit cost, order cost, status. Below-par rows are red, with a total to reorder.
 - A `Camera log` sheet.
 
-Order qty, cost, status and the total are live formulas, so the sheet still works when the owner edits a number. **To match the shop's real sheet** (photo Saturday), edit `COLUMNS` and `SHOP_NAME` at the top of `excel.py`.
+Order qty, cost, status and the total are live formulas, so the sheet still works when the owner edits a number. The first tab, `Hoja 1`, copies Casa Piada's own sheet layout.

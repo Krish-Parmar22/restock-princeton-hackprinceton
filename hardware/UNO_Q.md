@@ -25,8 +25,8 @@ webcam ─USB─ hub ─USB-C─ UNO Q (main.py) ──Wi-Fi/Tailscale──▶ 
 ## 3. Install (on the UNO Q)
 ```bash
 sudo apt-get update && sudo apt-get install -y python3-opencv python3-numpy python3-requests git
-git clone https://github.com/Krish-Parmar22/princeton-hacks.git   # or scp the hardware/ folder over
-cd princeton-hacks/hardware
+git clone https://github.com/Krish-Parmar22/restock-princeton-hackprinceton.git   # or scp the hardware/ folder over
+cd restock-princeton-hackprinceton/hardware
 ls /dev/video*                                                     # the webcam is usually /dev/video0
 ```
 

@@ -1,12 +1,11 @@
-"""API on :8000. Contract: docs/arnav-shah.md.
+"""API on :8000. Contract: app/contracts.py.
 
 Run: uv run uvicorn app.api.server:app --port 8000 --reload
 
 Routers:
   app/api/data.py  dashboard/Excel data endpoints (ledger workstream)
   app/api/chat.py  POST /inbound for the Photon bridge (agent workstream)
-  app/api/upload.py POST /api/grabs/upload for the Pi (docs/handoff.md)
-Both start as stubs with fake data so Arnav is never blocked.
+  app/api/upload.py POST /api/grabs/upload for the camera board
 """
 import logging
 import threading

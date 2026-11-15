@@ -1,4 +1,4 @@
-"""POST /inbound for Arnav's Photon bridge (contract: docs/arnav-shah.md).
+"""POST /inbound for Photon bridge (contract: app/contracts.py).
 Runs the deepagents agent; echoes if AGENT_MODEL isn't set, so the bridge always works."""
 from __future__ import annotations
 

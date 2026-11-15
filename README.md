@@ -1,4 +1,4 @@
-# Princeton Hacks: the restaurant inventory that keeps itself
+# Restock: the restaurant inventory that keeps itself
 
 **A webcam watches a restaurant's shelves and an AI agent keeps the inventory, so the owner never counts by hand again: every grab is checked by a vision model and logged, and the owner runs the shop by text (stock, reorders, their Excel sheet).**
 **We tested it live for 3 hours on the drinks fridge of a family Italian restaurant (the kitchen was off-limits), where one can = one unit makes every count exact and checkable.**
@@ -16,7 +16,7 @@ We worked with **Filippo Spagnesi (manager)** and **Abel Romero Corbalan (assist
 
 ![Before / during / after frames d1 judged](docs/media/grab-sprite-frames.jpg)
 
-What 3 hours of live testing showed, honestly: d1 named the right drink on every real grab. Only the confident ones changed stock; the rest went to the owner's "Needs your OK" list rather than being guessed. Most low-confidence grabs came from people standing between the camera and the fridge, so the fix is mounting the camera higher. We keep one clip in the repo; the rest of the footage stays on our laptop.
+What 3 hours of live testing showed: d1 named the right drink on every real grab. Only the confident ones changed stock; the rest went to the owner's "Needs your OK" list rather than being guessed. Most low-confidence grabs came from people standing between the camera and the fridge, so the fix is mounting the camera higher. We keep one clip in the repo; the rest of the footage stays on our laptop.
 
 ## What it does
 1. **Sees a grab.** Motion in a shelf zone cuts a before/during/after clip. Liquid **d1** (vision) says what was taken and how many: 1, 2, 3, or "more", which goes to the owner. **YOLO-World** checks that a hand was actually there. Confident grabs update stock; uncertain ones get a one-tap confirm.
@@ -54,7 +54,7 @@ What 3 hours of live testing showed, honestly: d1 named the right drink on every
 ```
 
 ## Run it (one laptop)
-The drinks test runs with `SCENE=drinks` (d1 is asked about cans and bottles); the default is the pizza make-line.
+Each box gets the right questions automatically: exact counts (1, 2, 3, more) for cans and bottles, pinch / handful for bulk food.
 ```bash
 scripts/db_up.sh && uv run python scripts/seed_demo.py --reset          # Postgres + demo week
 uv run uvicorn app.api.server:app --host 0.0.0.0 --port 8000           # API + grab watcher + alerts
@@ -66,4 +66,5 @@ Keys go in `.env` (see `.env.example`): `OPENROUTER_API_KEY` (agent model + d1),
 
 ## Docs
 - `docs/discovery/2026-11-14-casa-piada.md`: the restaurant, who we worked with, the evidence
-- `docs/architecture.md`, `docs/handoff.md`: design, camera ↔ laptop contract
+- `hardware/UNO_Q.md`: running the camera on the Arduino UNO Q
+- `app/agent/README.md`: the agent

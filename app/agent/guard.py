@@ -115,7 +115,7 @@ def _numbers(text: str) -> list[float]:
 def numbers_check(claim: str, evidence: str) -> bool | str | None:
     """Deterministic: every number in the claim must appear in the evidence (to rounding).
     None when the claim has no numbers. d1 is weak at arithmetic ($92.7 vs $9.27 scored 0.899 in
-    calibration, docs/guard-calibration.md), so numbers are never left to d1 alone."""
+    calibration), so numbers are never left to d1 alone."""
     nums = _numbers(claim)
     if not nums:
         return None
@@ -126,7 +126,7 @@ def numbers_check(claim: str, evidence: str) -> bool | str | None:
 
     # One step of arithmetic, but only NAMED, meaningful differences inside one record:
     # par - on_hand ("8.75 lb below par", blocked live Nov 14 without this) and actual - theoretical.
-    # Any-pair differences let "$8.75 per lb" through (Codex, Nov 14); cross-record sums let "$92.7".
+    # Any-pair differences let "$8.75 per lb" through (security review, Nov 14); cross-record sums let "$92.7".
     derived = set()
     for rec in re.findall(r"\{[^{}]*\}", evidence):
         try:

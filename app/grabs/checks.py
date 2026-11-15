@@ -184,7 +184,7 @@ def decide(answers: dict[str, D1Answer], min_prob: float, zone: str | None = Non
         # hand_food is recorded for context but is NOT a veto: the before/after bin change is the
         # primary signal, and a utensil or an occluded hand shouldn't flag a clear bin change.
 
-    # Thresholds tuned on real d1 runs (Nov 13, docs/struggles.md): the before/after bin change and
+    # Thresholds tuned on real d1 runs (Nov 13): the before/after bin change and
     # the ingredient are the facts that move inventory, so they must be confident. The action
     # answer only has to AGREE with the bin change (checked above), and the amount is inherently
     # fuzzy, so it needs QTY_MIN_PROB, not min_prob.

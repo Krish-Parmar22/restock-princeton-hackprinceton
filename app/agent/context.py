@@ -1,7 +1,7 @@
 """Per-run context: which chat we're talking to and what we've queued to send.
 
 During an inbound message, send_text queues into `outbox` and /inbound returns it as
-the reply. With no inbound (proactive alerts), send_text POSTs to Arnav's bridge.
+the reply. With no inbound (proactive alerts), send_text POSTs to the Photon bridge.
 """
 from __future__ import annotations
 

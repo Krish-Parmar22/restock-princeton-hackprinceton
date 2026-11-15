@@ -100,7 +100,7 @@ def test_exact_can_counts_move_stock_exactly(db, label, action, expect, status):
     assert impl.list_grabs(now.date(), "all")[0].status == status
 
 
-# ---- Codex adversarial review (Nov 14) regressions -------------------------------------------
+# ---- security review (Nov 14) regressions -------------------------------------------
 
 def test_only_our_own_pictures_can_be_attached(db, tmp_path):
     other = tmp_path / "x.png"

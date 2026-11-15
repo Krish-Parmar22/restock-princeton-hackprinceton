@@ -4,7 +4,7 @@ Everything marked VERIFIED is taken from Liquid's docs (checked 2026-11-13):
   - https://docs.liquid.ai/api/reference/decision-models/make-decisions  (OpenAPI for the endpoint)
   - https://docs.liquid.ai/lfm/models/d1                                 (image inputs, limits)
   - https://www.liquid.ai/blog/d1-decision-model                         (original Python example)
-Anything ASSUMED is marked so here and in docs/d1-notes.md.
+Anything ASSUMED is marked so here.
 
 Request (VERIFIED):
   POST https://api.liquid.ai/decisions/v1/systemone
@@ -166,7 +166,7 @@ def _error_message(resp: httpx.Response) -> str:
         413: "request too large: lower MAX_SIDE or send fewer frames (limit 4.5 MB)",
         422: "validation error: check model id (LIQUID_D1_MODEL, default d1.1) accepts images, <=8 images, <=10,000 patches, choice has 2-255 options",
         429: "rate limited: see Retry-After",
-    }.get(resp.status_code, "see docs/d1-notes.md")
+    }.get(resp.status_code, "see the Liquid d1 docs")
     return f"Liquid d1 HTTP {resp.status_code}: {str(msg)[:500]} ({hint})"
 
 

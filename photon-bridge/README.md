@@ -1,6 +1,6 @@
 # photon-bridge
 
-The owner's iMessage ⇄ **Photon 2.0** (`api.photon.codes/v1`, `src/photon2.ts`) ⇄ agent API on `:8000`. A `pho_prj_…` project ID selects Photon 2.0 automatically; `npm run dev` still uses the offline terminal provider. Contract: `docs/arnav-shah.md`.
+The owner's iMessage ⇄ **Photon 2.0** (`api.photon.codes/v1`, `src/photon2.ts`) ⇄ agent API on `:8000`. A `pho_prj_…` project ID selects Photon 2.0 automatically; `npm run dev` still uses the offline terminal provider. Contract: `app/contracts.py`.
 
 ```
 owner's phone ──iMessage──▶ Photon ──▶ bridge ──POST /inbound──▶ app/ (agent)
@@ -14,7 +14,7 @@ npm install
 npm run dev          # terminal provider: chat in this terminal, no Photon account needed
 cp .env.example .env # then fill PHOTON_PROJECT_ID (pho_prj_…) / PHOTON_API_KEY
 npm start            # live on the Photon iMessage line
-npm test             # 16 offline tests
+npm test             # offline tests
 ```
 Needs Node 22+. The agent API must be up on `API_URL` (`uv run uvicorn app.api.server:app --port 8000`).
 

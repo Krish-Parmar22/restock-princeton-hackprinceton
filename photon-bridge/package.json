@@ -2,7 +2,7 @@
   "name": "photon-bridge",
   "private": true,
   "type": "module",
-  "description": "Photon iMessage <-> agent API bridge. Contract: docs/arnav-shah.md",
+  "description": "Photon iMessage <-> agent API bridge. Contract: app/contracts.py",
   "scripts": {
     "start": "tsx --env-file-if-exists=.env src/index.ts",
     "dev": "PHOTON_PROVIDER=terminal tsx --env-file-if-exists=.env src/index.ts",

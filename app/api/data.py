@@ -1,4 +1,4 @@
-"""Data endpoints for Arnav's dashboard + Excel. Contract: docs/arnav-shah.md.
+"""Data endpoints for the dashboard + Excel. Contract: app/contracts.py.
 All data comes from app.ledger.api (Postgres); shapes come from app.contracts."""
 from __future__ import annotations
 

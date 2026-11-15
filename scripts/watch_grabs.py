@@ -5,7 +5,7 @@ Usage:
   uv run python scripts/watch_grabs.py --once     # process what's there now, then exit
   uv run python scripts/watch_grabs.py --dir tmp/grabs --interval 1
 
-Backend comes from D1_BACKEND ('fake' or 'liquid'); see docs/d1-notes.md.
+Backend comes from D1_BACKEND ('fake' or 'liquid').
 """
 from __future__ import annotations
 

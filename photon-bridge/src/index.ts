@@ -1,5 +1,5 @@
 // Photon iMessage bridge: owner's phone <-> Photon (spectrum-ts) <-> agent API on :8000.
-// Contract: docs/arnav-shah.md. Run: npm start (iMessage) or npm run dev (terminal provider, offline).
+// Contract: app/contracts.py. Run: npm start (iMessage) or npm run dev (terminal provider, offline).
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import { attachment, type Message, type Space, Spectrum } from "spectrum-ts";

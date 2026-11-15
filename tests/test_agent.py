@@ -144,7 +144,7 @@ def test_inbound_endpoint_echoes_without_model(monkeypatch):
     assert r.status_code == 200 and "echo: hi" in r.json()["reply"]
 
 
-# ---- regressions from Codex review ----
+# ---- regressions from the security review ----
 
 def test_accusing_question_is_checked():
     from app.agent.guard import split_claims
@@ -195,7 +195,7 @@ def test_bad_order_qty_rejected():
 
 
 def test_guard_numbers_are_checked_in_code_not_by_d1():
-    """Calibration (docs/guard-calibration.md): real d1 scored '$92.7' (true: $9.27) at 0.899."""
+    """Calibration: real d1 scored '$92.7' (true: $9.27) at 0.899."""
     from app.agent.guard import numbers_check
     ev = '[{"on_hand": 21.25, "variance_qty": 0.98, "variance_usd": 9.27, "example_grab_ids": ["syn-00844_pepperoni"]}]'
     assert numbers_check("That gap is about $9.27.", ev) is True
@@ -223,7 +223,7 @@ def test_guard_accepts_one_step_arithmetic_on_evidence():
 
 
 def test_derived_numbers_are_not_boosted(fake_ledger):
-    """Codex (Nov 14): '$8.75 per lb' equals par - on_hand but is a wrong PRICE. Derived numbers
+    """Review (Nov 14): '$8.75 per lb' equals par - on_hand but is a wrong PRICE. Derived numbers
     are never boosted to 0.9; d1 alone decides."""
     from langchain_core.messages import HumanMessage, ToolMessage
     from app.agent.guard import score_message

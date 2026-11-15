@@ -1,7 +1,7 @@
 [project]
 name = "dashboard"
 version = "0.1.0"
-description = "Owner dashboard (variance, grab clips, confirm flagged grabs) + Excel auto-fill. Contract: docs/arnav-shah.md"
+description = "Owner dashboard (variance, grab clips, confirm flagged grabs) + Excel auto-fill. Contract: app/contracts.py"
 requires-python = ">=3.11"
 dependencies = [
   "streamlit>=1.40",

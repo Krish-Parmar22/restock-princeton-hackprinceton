@@ -1,7 +1,7 @@
 """Shared data contracts. Single source in code for:
 
 1. The grab package (hardware -> software). Spec: docs/architecture.md, "The handoff".
-2. The API at :8000 that Arnav's bridge and dashboard call. Spec: docs/arnav-shah.md.
+2. The API at :8000 that the Photon bridge and dashboard call. Spec: app/contracts.py.
 
 Change these only after telling the other side.
 """
@@ -142,7 +142,7 @@ class MessageRow(BaseModel):
 
 
 class SendRequest(BaseModel):
-    """What we POST to Arnav's bridge at BRIDGE_URL/send."""
+    """What we POST to the Photon bridge at BRIDGE_URL/send."""
     chat_id: str
     text: str
     images: list[str] = Field(default_factory=list)

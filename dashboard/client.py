@@ -1,4 +1,4 @@
-"""Client for the agent API on :8000 (owned by app/, contract in docs/arnav-shah.md).
+"""Client for the agent API on :8000 (owned by app/, contract in app/contracts.py).
 
 `Api` talks to the real service. `DemoApi` serves the same shapes from local demo data
 (see demo.py) so the dashboard and Excel export work before the API or Postgres is up.

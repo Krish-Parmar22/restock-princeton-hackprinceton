@@ -1,4 +1,4 @@
-// Client for the agent API's POST /inbound (owned by app/, contract in docs/arnav-shah.md).
+// Client for the agent API's POST /inbound (owned by app/, contract in app/contracts.py).
 import type { AgentReply, InboundPayload } from "./relay.js";
 
 export function agentClient(apiUrl: string, timeoutMs = 90_000) {
