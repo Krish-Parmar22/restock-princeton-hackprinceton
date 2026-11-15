@@ -149,8 +149,10 @@ def test_seed_adds_drinks_fridge(db):
     from app.ledger.seed import seed
     seed(URL, reset=True)
     inv = {r.item: r for r in api.get_inventory()}
-    for name in ("coke", "diet_coke", "sprite", "water", "limonada_fresca"):
-        assert inv[name].on_hand == 24 and inv[name].unit == "each" and inv[name].par == 6
+    from app.ledger.seed import DRINK_ON_HAND, DRINKS
+    for name, _unit, _cost, par, _q in DRINKS:   # Casa Piada's real sheet: On Hand + Replacement (= par)
+        assert inv[name].on_hand == DRINK_ON_HAND[name] and inv[name].unit == "each" and inv[name].par == par
+    assert inv["sprite"].below_par, "their sheet: Sprite 5 on hand vs 10 replacement"
     assert {"pepperoni", "cheese", "dough", "sauce"} <= set(inv)
     with connect(URL) as conn:
         r = conn.execute("SELECT unit_cost, qty_per_label FROM items WHERE name = 'water'").fetchone()

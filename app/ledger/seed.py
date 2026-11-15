@@ -22,14 +22,24 @@ ITEMS = [  # name, unit, unit_cost, par, qty_per_label
     ("sauce", "qt", 2.20, 4, {"pinch": 0.02, "handful": 0.1, "whole_container": 2}),
 ]
 DRINK_QPL = {"1": 1, "2": 2, "3": 3, "pinch": 1, "handful": 2, "whole_container": 6}
-DRINKS = [  # the drinks fridge (SCENE=drinks live demo); seeded in every scene, counted 24 each, no sales/grabs
-    ("coke", "each", 1.00, 6, DRINK_QPL),
-    ("diet_coke", "each", 1.00, 6, DRINK_QPL),
-    ("sprite", "each", 1.00, 6, DRINK_QPL),
-    ("water", "each", 0.50, 6, DRINK_QPL),
-    ("limonada_fresca", "each", 1.50, 6, DRINK_QPL),
+# Casa Piada's real soft-drinks list and levels (their inventory sheet, Nov 14): par = their
+# "Replacement", opening count = their "On Hand". Prices are our estimates (their sheet leaves them blank).
+DRINKS = [  # (name, unit, unit_cost, par = Replacement, qty_per_label)
+    ("coke", "each", 1.00, 20, DRINK_QPL),
+    ("sprite", "each", 1.00, 10, DRINK_QPL),
+    ("diet_coke", "each", 1.00, 28, DRINK_QPL),
+    ("water", "each", 0.50, 24, DRINK_QPL),
+    ("siciliana_orange", "each", 1.50, 14, DRINK_QPL),
+    ("siciliana_limonata", "each", 1.50, 14, DRINK_QPL),
+    ("fresca", "each", 1.00, 14, DRINK_QPL),
+    ("sparkling_water", "each", 0.75, 20, DRINK_QPL),
+    ("ice_tea_peach", "each", 1.25, 12, DRINK_QPL),
+    ("ice_tea_lemon", "each", 1.25, 12, DRINK_QPL),
 ]
-DRINK_START_COUNT = 24
+DRINK_ON_HAND = {"coke": 31, "sprite": 5, "diet_coke": 28, "water": 44, "siciliana_orange": 35,
+                 "siciliana_limonata": 35, "fresca": 16, "sparkling_water": 28, "ice_tea_peach": 15,
+                 "ice_tea_lemon": 31}
+DRINK_START_COUNT = 24   # fallback for a drink missing from DRINK_ON_HAND
 RECIPES = {  # menu item -> {ingredient: qty per unit sold}
     "large cheese": {"dough": 1, "sauce": 0.25, "cheese": 0.5},
     "large pepperoni": {"dough": 1, "sauce": 0.25, "cheese": 0.45, "pepperoni": 0.25},
@@ -87,7 +97,7 @@ def seed(url: str | None = None, reset: bool = False, rng_seed: int = 7) -> dict
                          (first, ids[name], q))
         for name, did in drink_ids.items():
             conn.execute("INSERT INTO counts (ts, item_id, qty, source) VALUES (%s, %s, %s, 'manual')",
-                         (first, did, DRINK_START_COUNT))
+                         (first, did, DRINK_ON_HAND.get(name, DRINK_START_COUNT)))
         for off, delivery in DELIVERIES.items():
             d = WEEK_START + timedelta(days=off)
             for name, q in delivery.items():

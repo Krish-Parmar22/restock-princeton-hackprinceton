@@ -18,6 +18,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from app.config import ROOT, settings
 from app.ledger import api as ledger
+from app.ledger import impl as ledger_impl
 from app.ledger.impl import TZ
 
 if str(ROOT) not in sys.path:
@@ -48,7 +49,13 @@ def refresh(changed: str | None = None) -> dict:
     orders = ledger.list_orders(50)
     grabs = [g.model_dump(mode="json") for g in ledger.list_grabs(now.date(), "all")]
     note = f"Updated {now.strftime('%-I:%M %p')} by text" + (f": {changed}" if changed else "")
-    data = workbook_bytes(inv, now.date(), grabs, orders, note)
+    try:   # "Avrg. Qtty" on their sheet: average daily use over the last 7 days, from the camera
+        from datetime import timedelta
+        hist = ledger_impl.daily_usage(now.date() - timedelta(days=7), now.date() - timedelta(days=1))
+        avg_use = {k: sum(v.values()) / 7 for k, v in hist.items()}
+    except Exception:
+        avg_use = {}
+    data = workbook_bytes(inv, now.date(), grabs, orders, note, avg_use)
     path = settings.sheet_path
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp.xlsx")
@@ -59,7 +66,7 @@ def refresh(changed: str | None = None) -> dict:
 
 def render_png(inv: list[dict], orders: list[dict], note: str, changed: str | None = None) -> str:
     rows = sorted(inv, key=lambda r: (not r["below_par"], r["item"]))
-    cols = [("Item", 220), ("On hand", 120), ("On order", 110), ("Par", 70), ("Order", 90), ("Status", 140)]
+    cols = [("Item", 220), ("On Hand", 120), ("On order", 110), ("Replacement", 130), ("Order", 80), ("Status", 130)]   # their sheet's words
     pad, rh, head = 28, 46, 120
     recent = [o for o in orders if o["status"] in ("approved", "received")][:3]
     w = pad * 2 + sum(c[1] for c in cols)

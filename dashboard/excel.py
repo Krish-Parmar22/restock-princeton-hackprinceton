@@ -38,15 +38,74 @@ THIN = Side(style="thin", color="C8CDD3")
 GRID = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 
 
+# Casa Piada's own inventory sheet (the "Example Inventory.xlsx" they gave us, tab "Hoja 1"),
+# reproduced cell for cell so they can adopt it with no change: our item -> their row label, in their order.
+SHOP_SHEET_ITEMS = [
+    ("coke", "Coca Cola"), ("sprite", "Sprite"), ("diet_coke", "Diet Coke"), ("water", "Water 500ml Flat"),
+    ("siciliana_orange", "Siciliana drinks-Orange"), ("siciliana_limonata", "Siciliana drinks-Limonata"),
+    ("fresca", "Fresca"), ("sparkling_water", "Sparkling water"), ("ice_tea_peach", "Ice Tea Peach"),
+    ("ice_tea_lemon", "Ice Tea Lemon "),
+]
+SHOP_FONT = "Times New Roman"
+SHOP_ITEM_FILL = PatternFill("solid", fgColor="FAE2D5")
+
+
+def shop_sheet(ws, inventory: list[dict], day: date, avg_use: dict[str, float] | None = None) -> None:
+    """Their layout exactly: A1 'Soft Drinks', row 2 headers (Avrg. Qtty, Tuesday, Thursday, On Hand,
+    Replacement, Delta), item rows with Delta = On Hand - Replacement and Value = price x On Hand.
+    Filled from the camera ledger: On Hand = live stock, Replacement = par, Tuesday/Thursday = what to
+    order on the next delivery day to get back to Replacement (on-order already counted)."""
+    import math
+    inv = {r["item"]: r for r in inventory}
+    rows = [(k, label) for k, label in SHOP_SHEET_ITEMS if k in inv]
+    if not rows:
+        return
+    deliver_tue = day.weekday() in (4, 5, 6, 0)          # Fri-Mon: next delivery Tuesday; Tue-Thu: Thursday
+    f = lambda **kw: Font(name=SHOP_FONT, size=12, **kw)
+    center = Alignment(horizontal="center")
+    ws["A1"] = "Soft Drinks"
+    ws["A1"].font = f(bold=True)
+    for col, h in (("B", "Avrg. Qtty"), ("C", "Tuesday"), ("D", "Thursday"), ("G", "On Hand"),
+                   ("H", "Replacement"), ("I", "Delta")):
+        ws[f"{col}2"] = h
+        ws[f"{col}2"].font = f()
+        ws[f"{col}2"].alignment = center
+    targets = [1] + list(range(3, 3 + len(rows) - 1))   # their sheet: first item on row 1, headers on row 2
+    for r, (key, name) in zip(targets, rows):
+        row = inv[key]
+        short = max(0.0, row["par"] - row["on_hand"] - row.get("on_order", 0))
+        order = math.ceil(short)
+        vals = {"B": round((avg_use or {}).get(key, 0.0), 1), "C": order if deliver_tue else 0,
+                "D": 0 if deliver_tue else order, "E": name, "G": row["on_hand"], "H": row["par"],
+                "I": f"=G{r}-H{r}", "J": row["unit_cost"], "K": f"=J{r}*G{r}"}
+        for col, v in vals.items():
+            c = ws[f"{col}{r}"]
+            c.value = v
+            c.font = f()
+            c.alignment = Alignment(horizontal="right") if col == "K" else center
+        ws[f"E{r}"].fill = SHOP_ITEM_FILL
+        ws[f"K{r}"].number_format = "[$$]#,##0.00"
+        ws[f"J{r}"].number_format = "[$$]#,##0.00"
+    ws.column_dimensions["E"].width = 19.8
+    ws.conditional_formatting.add(f"I1:I{targets[-1]}", FormulaRule(formula=["I1<0"], font=Font(color="9B1C1C", bold=True)))
+
+
 def _col(key: str) -> str:
     return get_column_letter([c[0] for c in COLUMNS].index(key) + 1)
 
 
 def build_workbook(inventory: list[dict], day: date, grabs: list[dict] | None = None,
-                   orders: list[dict] | None = None, note: str | None = None) -> Workbook:
+                   orders: list[dict] | None = None, note: str | None = None,
+                   avg_use: dict[str, float] | None = None) -> Workbook:
     wb = Workbook()
-    ws = wb.active
-    ws.title = "Inventory"
+    first = wb.active
+    if any(r["item"] in dict(SHOP_SHEET_ITEMS) for r in inventory):
+        first.title = "Hoja 1"            # the shop's own sheet, first, exactly as they keep it
+        shop_sheet(first, inventory, day, avg_use)
+        ws = wb.create_sheet("Inventory")
+    else:
+        ws = first
+        ws.title = "Inventory"
     ncols = len(COLUMNS)
     last = get_column_letter(ncols)
 
@@ -169,7 +228,8 @@ def _orders(ws, orders: list[dict]) -> None:
 
 
 def workbook_bytes(inventory: list[dict], day: date, grabs: list[dict] | None = None,
-                   orders: list[dict] | None = None, note: str | None = None) -> bytes:
+                   orders: list[dict] | None = None, note: str | None = None,
+                   avg_use: dict[str, float] | None = None) -> bytes:
     buf = io.BytesIO()
-    build_workbook(inventory, day, grabs, orders, note).save(buf)
+    build_workbook(inventory, day, grabs, orders, note, avg_use).save(buf)
     return buf.getvalue()

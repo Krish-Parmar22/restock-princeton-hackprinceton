@@ -66,7 +66,7 @@ def test_sheet_refresh_writes_xlsx_with_orders_and_a_picture(db):
     impl.set_order_status(impl.draft_order("coke", 8, "chat-1"), "approved")
     out = sheet.refresh("ordered 8 coke")
     wb = openpyxl.load_workbook(out["xlsx"])
-    assert wb.sheetnames[:2] == ["Inventory", "Orders"]
+    assert wb.sheetnames[:3] == ["Hoja 1", "Inventory", "Orders"]   # Casa Piada's own sheet first
     orders = wb["Orders"]
     assert orders["B2"].value == "Coke" and orders["C2"].value == 8 and orders["H2"].value == "approved"
     assert "ordered 8 coke" in wb["Inventory"]["A2"].value

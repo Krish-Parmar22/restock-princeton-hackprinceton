@@ -50,3 +50,22 @@ def test_export_cli_demo(tmp_path, capsys):
 def test_export_cli_api_down(tmp_path, capsys):
     assert export_main(["--out", str(tmp_path / "x.xlsx"), "--api", "http://127.0.0.1:9"]) == 1
     assert "--demo" in capsys.readouterr().err
+
+
+def test_first_tab_is_casa_piadas_own_sheet(tmp_path):
+    """Their 'Example Inventory.xlsx' (Hoja 1), cell for cell: they can adopt it with no change."""
+    from datetime import date as _d
+
+    from excel import build_workbook
+    inv = [{"item": "coke", "unit": "each", "par": 20, "on_hand": 31, "on_order": 0, "used_today": 0, "unit_cost": 1.0, "below_par": False},
+           {"item": "sprite", "unit": "each", "par": 10, "on_hand": 5, "on_order": 0, "used_today": 0, "unit_cost": 1.0, "below_par": True},
+           {"item": "cheese", "unit": "lb", "par": 15, "on_hand": 20, "on_order": 0, "used_today": 0, "unit_cost": 3.8, "below_par": False}]
+    wb = build_workbook(inv, _d(2026, 11, 15), avg_use={"sprite": 3.0})     # a Sunday: next delivery Tuesday
+    ws = wb.worksheets[0]
+    assert ws.title == "Hoja 1" and ws["A1"].value == "Soft Drinks"
+    assert [ws[c].value for c in ("B2", "C2", "D2", "G2", "H2", "I2")] == ["Avrg. Qtty", "Tuesday", "Thursday", "On Hand", "Replacement", "Delta"]
+    assert (ws["E1"].value, ws["G1"].value, ws["H1"].value, ws["I1"].value, ws["K1"].value) == ("Coca Cola", 31, 20, "=G1-H1", "=J1*G1")
+    assert (ws["E3"].value, ws["G3"].value, ws["H3"].value, ws["C3"].value, ws["D3"].value, ws["B3"].value) == ("Sprite", 5, 10, 5, 0, 3.0)
+    assert ws["E1"].font.name == "Times New Roman" and ws["E1"].fill.fgColor.rgb.endswith("FAE2D5")
+    assert "cheese" not in str([c.value for row in ws.iter_rows() for c in row]).lower(), "soft drinks only, like theirs"
+    assert wb.sheetnames[1] == "Inventory"
