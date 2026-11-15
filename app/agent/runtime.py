@@ -222,8 +222,15 @@ def _answer_offer(agent, msg: InboundMessage) -> InboundReply | None:
     (no model): yes places exactly that order (on order, approved), no declines. Only when no agent
     approval is pending, so it never steals a "yes" meant for something else."""
     ans = approval_answer(msg.text)
+    qty_override = None
     if ans is None:
-        return None
+        # "reorder 30", "make it 30", "yes 30", "order 30 for thanksgiving": the same offer, their number
+        m = re.search(r"\b(?:re-?order|order|make it|yes|yeah|ok|get)\b\D{0,12}?(\d{1,4})\b", msg.text, re.I)
+        if not m or re.search(r"\b(no|don'?t|cancel)\b", msg.text, re.I):
+            return None
+        qty_override, ans = float(m.group(1)), True
+        if not 0 < qty_override <= 1000:
+            return None
     if pending_approval(agent, {"configurable": {"thread_id": msg.chat_id}}):
         return None
     from app.ledger import api as ledger
@@ -236,7 +243,7 @@ def _answer_offer(agent, msg: InboundMessage) -> InboundReply | None:
         if r is None:
             return None
         c.execute("UPDATE alerts SET kind = 'reorder_offer_answered' WHERE id = %s", (r["id"],))
-    item, qty = r["name"], float(r["text"])
+    item, qty = r["name"], (qty_override if qty_override else float(r["text"]))
     name = item.replace("_", " ")
     if not ans:
         reply = f"OK, not ordering {name}."

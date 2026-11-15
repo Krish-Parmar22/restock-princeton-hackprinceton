@@ -29,7 +29,7 @@ from app.ledger import api as ledger
 GUARDED_TOOL = "send_text"
 MAX_BLOCKS = 2
 BLOCK_TAG = "BLOCKED by d1 guard"
-FALLBACK = "I couldn't confirm that from the records yet. Want me to pull the clips and check?"
+FALLBACK = "Sorry, I couldn't verify that against the records. Could you say it another way?"
 SOFTEN_PREFIX = "Looks like: "
 
 
@@ -83,7 +83,13 @@ def _evidence(state: dict) -> str:
         variance = json.dumps(week, default=str)
     except Exception:
         variance = "unavailable"
-    return ("Tool results from this conversation:\n" + "\n".join(tool_results[-20:]) +
+    # The owner's own words this turn: echoing a number THEY said ("reorder 30?") isn't a hallucination.
+    owner = ""
+    for m in reversed(state.get("messages", [])):
+        if isinstance(m, HumanMessage) and not str(m.content).startswith("[system"):
+            owner = str(m.content)[:500]
+            break
+    return ("The owner's latest message: " + owner + "\n\nTool results from this conversation:\n" + "\n".join(tool_results[-20:]) +
             f"\n\nCurrent inventory snapshot:\n{snapshot}" +
             f"\n\nLast 7 days, should-have-used vs actually-used per item:\n{variance}")
 

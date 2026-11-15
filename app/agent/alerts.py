@@ -65,10 +65,23 @@ def check_and_alert(send=None) -> list[dict]:
                 ledger.record_alert("below_par", row.item, chat, text)
                 if offer:   # the owner's next plain "yes" places exactly this order (runtime._answer_offer)
                     ledger.record_alert("reorder_offer", row.item, chat, f"{offer['order_qty']:g}")
+                _tell_agent(chat, text)
                 sent.append({"chat_id": chat, "item": row.item, "text": text})
             else:
                 log.warning("alert to %s not delivered: %s", chat, err)
     return sent
+
+
+def _tell_agent(chat: str, text: str) -> None:
+    """Put the alert in the agent's own conversation, so a follow-up like "make it 30" or "why?" makes sense."""
+    try:
+        from app.agent.runtime import _note, get_agent
+        agent = get_agent()
+        if agent is not None:
+            _note(agent, chat, f"[system: you just texted the owner this alert: {text!r}. A reply about a quantity "
+                               f"or yes/no refers to it.]")
+    except Exception:
+        log.exception("could not add the alert to the agent thread")
 
 
 def grab_photo(item: str) -> str | None:

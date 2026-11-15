@@ -4,6 +4,8 @@ import os
 os.environ["LANGSMITH_TRACING"] = "false"     # set before app.config loads .env (dotenv won't override)
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
 os.environ["WATCHER_IN_SERVER"] = "false"     # tests drive the watcher directly
+if os.getenv("RUN_E2E") != "1":
+    os.environ["AGENT_MODEL"] = ""            # unit tests never build the real agent (its memory lives in the live DB)
 os.environ["PLAN_TIME"] = ""                  # no daily reorder-plan thread in tests
 
 

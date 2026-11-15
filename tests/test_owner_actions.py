@@ -264,6 +264,7 @@ def test_one_yes_answers_the_alerts_reorder_offer(db, monkeypatch):
     from app.ledger import api
     api.remember_chat("owner-x", "+1")
     sent = []
+    monkeypatch.setattr(alerts, "_tell_agent", lambda chat, text: None)
     out = alerts.check_and_alert(lambda req: (sent.append(req) or True, None))
     assert out and "Reorder 8 for $8.00? Reply yes or no." in sent[0].text      # coke 4 on hand, par 6 -> 2x par
     monkeypatch.setattr(runtime, "pending_approval", lambda agent, cfg: [])
@@ -273,3 +274,16 @@ def test_one_yes_answers_the_alerts_reorder_offer(db, monkeypatch):
     assert [o["status"] for o in api.list_orders()] == ["approved"]
     assert runtime._answer_offer(object(), msg("yes")) is None, "an offer is answered once"
     assert runtime._answer_offer(object(), msg("how much coke?")) is None
+
+
+@pytest.mark.parametrize("reply,qty", [("Reorder 30 for Thanksgiving!", 30), ("make it 12", 12), ("yes, 15", 15)])
+def test_answering_the_offer_with_a_different_number(db, monkeypatch, reply, qty):
+    from app.agent import alerts
+    from app.ledger import api
+    api.remember_chat("owner-q", "+1")
+    monkeypatch.setattr(alerts, "_tell_agent", lambda chat, text: None)
+    alerts.check_and_alert(lambda req: (True, None))
+    monkeypatch.setattr(runtime, "pending_approval", lambda agent, cfg: [])
+    r = runtime._answer_offer(object(), InboundMessage(chat_id="owner-q", sender="+1", text=reply,
+                                                       ts=datetime.now(timezone.utc)))
+    assert r.reply.startswith(f"Done: {qty} coke on order")
