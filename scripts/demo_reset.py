@@ -6,8 +6,8 @@
   alerts, agent messages). Removes test-only items (e.g. 'cards').
 - Keeps the owner's phone chat(s) (Photon chat ids start with pho_) so the agent can text first,
   and clears their conversation history so the demo starts fresh.
-- Puts cheese and Sprite JUST above par: one handful of cheese, or one can of Sprite, drops it below
-  par and the owner's phone gets the alert automatically (cooldowns cleared).
+- Puts cheese, Sprite and pineapple juice just above par: the SECOND handful / can / bottle drops it
+  below par and the owner's phone gets the alert automatically (cooldowns cleared).
 """
 from __future__ import annotations
 
@@ -22,8 +22,9 @@ from app.config import settings  # noqa: E402
 from app.db.conn import connect  # noqa: E402
 from app.ledger.seed import seed  # noqa: E402
 
-# item -> (par, count). One take crosses par: cheese handful = 0.3 lb, a Sprite = 1 can.
-EDGE = {"cheese": (15, 15.2), "sprite": (6, 6), "pineapple_juice": (4, 4)}
+# item -> (par, count). The SECOND take crosses par, so the judge sees one normal grab, then the alert:
+# cheese handful = 0.3 lb (15.5 -> 15.2 -> 14.9 < 15); cans/bottles = 1 each (par + 1 -> par -> below).
+EDGE = {"cheese": (15, 15.5), "sprite": (6, 7), "pineapple_juice": (4, 5)}
 EXTRA_ITEMS = {"pineapple_juice": ("each", 2.50)}
 THREAD_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
 
@@ -68,7 +69,7 @@ def main() -> None:
         sheet.refresh("demo reset")
     except Exception as e:
         print("sheet refresh skipped:", e)
-    print(f"Demo reset. Owner phone chats kept: {len(phones)}. One take of cheese or Sprite now triggers the alert.")
+    print(f"Demo reset. Owner phone chats kept: {len(phones)}. The 2nd grab of cheese, Sprite or pineapple juice triggers the alert.")
 
 
 if __name__ == "__main__":
