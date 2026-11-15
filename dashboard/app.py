@@ -102,7 +102,8 @@ def show_frames(g: dict, key: str) -> None:
 def grab_caption(g: dict) -> str:
     t = datetime.fromisoformat(str(g["t_start"]).replace("Z", "+00:00")).strftime("%a %-I:%M:%S %p")
     conf = f"{g['confidence']:.0%}" if g.get("confidence") is not None else "?"
-    return f"**{t}** · {label(g['zone'])} bin · {label(g.get('action'))} {label(g.get('qty_label'))} of {label(g.get('item'))} · confidence {conf} · `{g['status']}`"
+    where = "📍 Casa Piada" if str(g["grab_id"]).endswith("-shop") else "🔴 Live"
+    return f"{where} · **{t}** · {label(g['zone'])} · {label(g.get('action'))} {label(g.get('qty_label'))} of {label(g.get('item'))} · confidence {conf} · `{g['status']}`"
 
 
 # ---------- password (public demo link) ----------
