@@ -38,9 +38,11 @@ class MotionTrigger:
         min_diff_pixels: float = 0.004, # fraction of the zone that must be moving
         diff_lag: int = 4,           # compare to the frame this many frames back (~0.27 s at 15 fps)
         active_learning_rate: float = 0.0005,  # MOG2 learning while a grab is active (auto when idle)
-        static_timeout: float = 4.0, # end a grab after this long with no movement, even if the
+        static_timeout: float = 3.5, # end a grab after this long with no movement, even if the
                                      # zone still differs from the background (e.g. a resting hand)
         max_duration: float = 60.0,  # never let one grab run longer than this (constant motion)
+        scene_change_ratio: float = 0.45,  # this much of the WHOLE frame moving = camera moved, not a grab
+        relearn_s: float = 2.0,            # then re-learn the view for this long before watching again
     ):
         self.min_pixels = min_pixels
         self.min_contour_area = min_contour_area
@@ -51,6 +53,9 @@ class MotionTrigger:
         self._grays = __import__("collections").deque(maxlen=diff_lag + 1)
         self.static_timeout = static_timeout
         self.max_duration = max_duration
+        self.scene_change_ratio = scene_change_ratio
+        self.relearn_s = relearn_s
+        self.scene_reset = False
         self.active_learning_rate = active_learning_rate
 
         # background subtractor — adapts to gradual lighting changes
@@ -110,6 +115,20 @@ class MotionTrigger:
         else:
             _, move_mask = cv2.threshold(cv2.absdiff(gray, self._grays[0]), self.diff_threshold, 255, cv2.THRESH_BINARY)
         self._grays.append(gray)
+
+        # The CAMERA moved (bumped, picked up, re-aimed) or the lights changed: most of the whole
+        # picture differs from ~0.27 s ago. That's not a grab. Cancel any grab in progress (no junk
+        # package), re-learn the scene fast, and ignore motion until it has (found live, Nov 14).
+        self.scene_reset = False
+        moved = cv2.countNonZero(move_mask) / move_mask.size
+        if moved > self.scene_change_ratio:
+            self._relearn_until = timestamp + self.relearn_s
+            self.scene_reset = True
+        if timestamp < getattr(self, "_relearn_until", 0):
+            self.bg_sub.apply(frame, learningRate=0.5)          # absorb the new view quickly
+            for zone in self.zones:
+                zone.active, zone.triggered = False, False
+            return []
 
         events = []
 

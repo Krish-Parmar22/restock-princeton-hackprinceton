@@ -23,7 +23,7 @@ from grab_cutter import GrabCutter
 from motion_trigger import MotionTrigger
 
 MAX_DURING_KEPT = 30   # cap memory on very long grabs
-MERGE_S = 1.5          # quiet time before a grab is final; motion sooner = same grab
+MERGE_S = 1.0          # quiet time before a grab is final; motion sooner = same grab
 
 
 @dataclass
@@ -54,6 +54,9 @@ class PiPipeline:
         """Feed one frame. Returns the grab package folders finalized on this frame."""
         self.buffer.add(frame, ts)
         ended = {e["zone"]: e for e in self.trigger.update(frame, ts)}
+        if getattr(self.trigger, "scene_reset", False) and self.grabs:
+            self.grabs.clear()   # camera moved mid-grab: that clip is meaningless, never upload it
+            print("[camera] view changed (camera moved or lights): re-learning the scene, grab discarded")
         folders = []
         for z in self.trigger.zones:
             g = self.grabs.get(z.name)

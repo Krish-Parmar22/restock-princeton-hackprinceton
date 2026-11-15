@@ -173,3 +173,21 @@ def test_constant_motion_is_capped_and_still_ships(tmp_path):
     for f in out:
         m = json.loads((Path(f) / "meta.json").read_text())
         assert m["t_end"] - m["t_start"] <= 61
+
+
+def test_bumped_camera_is_not_a_grab_and_recovers_fast(tmp_path):
+    """Someone knocks the webcam mid-demo: the whole view shifts. That must not upload junk, and the
+    next real grab must still work a few seconds later (found live, Nov 14)."""
+    shifted = np.roll(CLEAN, 300, axis=1)            # the camera turned: a totally different view
+    v = Video().hold(CLEAN, 6).reach("pepperoni", _SCENE, 0.6, depths=(0.0, 0.6))   # a reach starts...
+    v.hold(shifted, 6)                                # ...and the camera gets bumped
+    assert run(v.frames, tmp_path / "a") == [], "a bumped camera is not a grab"
+    # knocked and set back: after re-learning, the next real grab is still caught
+    zs = [{"name": "pepperoni", "points": ZONES["pepperoni"]}]
+    pipe = PiPipeline(zs, CLEAN.shape, GrabCutter(output_dir=str(tmp_path / "b"), source="webcam"), camera_id="t")
+    w = Video().hold(CLEAN, 6).hold(shifted, 3).hold(CLEAN, 6).reach("pepperoni", _SCENE, 1.5) \
+        .reach("pepperoni", _SCENE, 0.8, depths=(0.9, -0.6)).hold(CLEAN, 8)
+    out = []
+    for ts, f in w.frames:
+        out += pipe.process(f, ts)
+    assert len(out) >= 1

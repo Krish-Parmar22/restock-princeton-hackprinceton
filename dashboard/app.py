@@ -228,15 +228,21 @@ def _confirm(g, action, item, qty, msg):
 for g in flagged:
     with st.expander(grab_caption(g), expanded=len(flagged) <= 3):
         show_frames(g, f"flag-{g['grab_id']}")
-        saw = g.get("action") in ACTIONS and g.get("item") and g.get("qty_label") in QTYS
-        b1, b2, _ = st.columns([1, 1, 2])
+        units = {r["item"]: r["unit"] for r in inventory}
+        it = g.get("item") or g["zone"]
+        counted = units.get(it) == "each"
+        default_qty = g.get("qty_label") if g.get("qty_label") in QTYS else ("1" if counted else "handful")
+        saw = g.get("action") in ACTIONS
+        b1, b2, b3, _ = st.columns([1, 1, 1, 1])
         if b1.button("✓ Right", key=f"ok-{g['grab_id']}", type="primary", disabled=not saw,
-                     help="The camera got it right: count it as it says." if saw else "The camera wasn't sure what it was: use Fix it."):
-            _confirm(g, g["action"], g["item"], g["qty_label"], f"Counted: {label(g['action'])} {label(g['qty_label'])} {label(g['item'])}")
-        if b2.button("✗ Nothing taken", key=f"no-{g['grab_id']}",
+                     help=f"Count it as the camera said: {label(g.get('action'))} {label(default_qty)} {label(it)}"):
+            _confirm(g, g["action"], it, default_qty, f"Counted: {label(g['action'])} {label(default_qty)} {label(it)}")
+        if counted and b2.button("✓ Took 1", key=f"one-{g['grab_id']}",
+                                 help=f"One {label(it)} was taken."):
+            _confirm(g, "took", it, "1", f"Counted: took 1 {label(it)}")
+        if b3.button("✗ Nothing taken", key=f"no-{g['grab_id']}",
                      help="Just a touch or a false alarm: no stock change."):
-            _confirm(g, "touched", g.get("item") or g["zone"], g.get("qty_label") if g.get("qty_label") in QTYS else "1",
-                     "Marked as nothing taken")
+            _confirm(g, "touched", it, default_qty, "Marked as nothing taken")
         with st.popover("Fix it"):
             with st.form(f"confirm-{g['grab_id']}"):
                 action = st.selectbox("What happened", ACTIONS, index=ACTIONS.index(g["action"]) if g.get("action") in ACTIONS else 0, format_func=label)
