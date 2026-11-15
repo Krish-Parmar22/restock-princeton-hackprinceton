@@ -45,6 +45,7 @@ SHOP_SHEET_ITEMS = [
     ("siciliana_orange", "Siciliana drinks-Orange"), ("siciliana_limonata", "Siciliana drinks-Limonata"),
     ("fresca", "Fresca"), ("sparkling_water", "Sparkling water"), ("ice_tea_peach", "Ice Tea Peach"),
     ("ice_tea_lemon", "Ice Tea Lemon "),
+    ("pineapple_juice", "Pineapple Juice"),   # added for our demo; not on their original sheet
 ]
 SHOP_FONT = "Times New Roman"
 SHOP_ITEM_FILL = PatternFill("solid", fgColor="FAE2D5")

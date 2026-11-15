@@ -35,10 +35,11 @@ DRINKS = [  # (name, unit, unit_cost, par = Replacement, qty_per_label)
     ("sparkling_water", "each", 0.75, 20, DRINK_QPL),
     ("ice_tea_peach", "each", 1.25, 12, DRINK_QPL),
     ("ice_tea_lemon", "each", 1.25, 12, DRINK_QPL),
+    ("pineapple_juice", "each", 2.50, 4, DRINK_QPL),   # our demo drink (not on their sheet)
 ]
 DRINK_ON_HAND = {"coke": 31, "sprite": 5, "diet_coke": 28, "water": 44, "siciliana_orange": 35,
                  "siciliana_limonata": 35, "fresca": 16, "sparkling_water": 28, "ice_tea_peach": 15,
-                 "ice_tea_lemon": 31}
+                 "ice_tea_lemon": 31, "pineapple_juice": 5}
 DRINK_START_COUNT = 24   # fallback for a drink missing from DRINK_ON_HAND
 
 # What an Italian piadina shop with an espresso bar also stocks (Casa Piada-style), beyond the pizza
