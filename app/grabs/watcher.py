@@ -215,5 +215,17 @@ def build_watcher(allow_fake: bool = False, grabs_dir: Path | None = None) -> "G
             log.warning("YOLO_ENABLED but ultralytics isn't installed: d1 only")
     w = GrabWatcher(grabs_dir, client=client, settle_s=1.0, hand_check=hand_check)
     from app.agent.alerts import check_and_alert
-    w.after_poll = check_and_alert
+
+    def after_new_grabs():
+        """New grabs were recorded: text below-par alerts, and rewrite the owner's live Excel file
+        (exports/Inventory.xlsx) so it always matches the camera, not only after a text."""
+        try:
+            check_and_alert()
+        finally:
+            try:
+                from app import sheet
+                sheet.refresh("camera")
+            except Exception:
+                log.exception("sheet refresh after grabs failed")
+    w.after_poll = after_new_grabs
     return w
