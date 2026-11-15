@@ -150,7 +150,7 @@ def test_seed_adds_drinks_fridge(db):
     seed(URL, reset=True)
     inv = {r.item: r for r in api.get_inventory()}
     from app.ledger.seed import DRINK_ON_HAND, DRINKS
-    for name, _unit, _cost, par, _q in DRINKS:   # seeded On Hand + par
+    for name, _unit, _cost, par, _q in DRINKS:   # Casa Piada's real sheet: On Hand + Replacement (= par)
         assert inv[name].on_hand == DRINK_ON_HAND[name] and inv[name].unit == "each" and inv[name].par == par
     assert inv["sprite"].below_par, "their sheet: Sprite 5 on hand vs 10 replacement"
     assert {"pepperoni", "cheese", "dough", "sauce"} <= set(inv)

@@ -38,8 +38,8 @@ THIN = Side(style="thin", color="C8CDD3")
 GRID = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 
 
-# The layout of the restaurant's own inventory sheet (tab "Hoja 1"), so they could adopt it with no
-# change: our item -> row label. Layout only: none of their figures are in this repo.
+# Casa Piada's own inventory sheet (the "Example Inventory.xlsx" they gave us, tab "Hoja 1"),
+# reproduced cell for cell so they can adopt it with no change: our item -> their row label, in their order.
 SHOP_SHEET_ITEMS = [
     ("coke", "Coca Cola"), ("sprite", "Sprite"), ("diet_coke", "Diet Coke"), ("water", "Water 500ml Flat"),
     ("siciliana_orange", "Siciliana drinks-Orange"), ("siciliana_limonata", "Siciliana drinks-Limonata"),

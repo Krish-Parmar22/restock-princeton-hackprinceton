@@ -18,7 +18,7 @@ We worked with **Filippo Spagnesi (manager)** and **Abel Romero Corbalan (assist
 
 What 3 hours of live testing showed: d1 named the right drink on every real grab. Only the confident ones changed stock; the rest went to the owner's "Needs your OK" list rather than being guessed. Most low-confidence grabs came from people standing between the camera and the fridge, so the fix is mounting the camera higher.
 
-**Privacy:** at Casa Piada's request, none of their data is in this repo except one clip and the photos taken with them. Their other footage, their inventory sheet and their figures stay private; the stock numbers in the code are made up.
+**Privacy:** at Casa Piada's request, their footage stays private. The only footage in this repo is one clip, plus the photos taken with them.
 
 ## What it does
 1. **Sees a grab.** Motion in a shelf zone cuts a before/during/after clip. Liquid **d1** (vision) says what was taken and how many: 1, 2, 3, or "more", which goes to the owner. **YOLO-World** checks that a hand was actually there. Confident grabs update stock; uncertain ones get a one-tap confirm.

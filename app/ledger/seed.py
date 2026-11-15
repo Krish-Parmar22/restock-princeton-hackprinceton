@@ -22,24 +22,24 @@ ITEMS = [  # name, unit, unit_cost, par, qty_per_label
     ("sauce", "qt", 2.20, 4, {"pinch": 0.02, "handful": 0.1, "whole_container": 2}),
 ]
 DRINK_QPL = {"1": 1, "2": 2, "3": 3, "pinch": 1, "handful": 2, "whole_container": 6}
-# The drinks an Italian shop's fridge carries. Par levels, counts and prices are made up: the
-# restaurant's own figures stay private.
-DRINKS = [  # (name, unit, unit_cost, par, qty_per_label)
-    ("coke", "each", 1.00, 24, DRINK_QPL),
+# Casa Piada's real soft-drinks list and levels (their inventory sheet, Nov 14): par = their
+# "Replacement", opening count = their "On Hand". Prices are our estimates (their sheet leaves them blank).
+DRINKS = [  # (name, unit, unit_cost, par = Replacement, qty_per_label)
+    ("coke", "each", 1.00, 20, DRINK_QPL),
     ("sprite", "each", 1.00, 10, DRINK_QPL),
-    ("diet_coke", "each", 1.00, 24, DRINK_QPL),
-    ("water", "each", 0.50, 30, DRINK_QPL),
-    ("siciliana_orange", "each", 1.50, 12, DRINK_QPL),
-    ("siciliana_limonata", "each", 1.50, 12, DRINK_QPL),
-    ("fresca", "each", 1.00, 12, DRINK_QPL),
-    ("sparkling_water", "each", 0.75, 18, DRINK_QPL),
-    ("ice_tea_peach", "each", 1.25, 10, DRINK_QPL),
-    ("ice_tea_lemon", "each", 1.25, 10, DRINK_QPL),
-    ("pineapple_juice", "each", 2.50, 4, DRINK_QPL),
+    ("diet_coke", "each", 1.00, 28, DRINK_QPL),
+    ("water", "each", 0.50, 24, DRINK_QPL),
+    ("siciliana_orange", "each", 1.50, 14, DRINK_QPL),
+    ("siciliana_limonata", "each", 1.50, 14, DRINK_QPL),
+    ("fresca", "each", 1.00, 14, DRINK_QPL),
+    ("sparkling_water", "each", 0.75, 20, DRINK_QPL),
+    ("ice_tea_peach", "each", 1.25, 12, DRINK_QPL),
+    ("ice_tea_lemon", "each", 1.25, 12, DRINK_QPL),
+    ("pineapple_juice", "each", 2.50, 4, DRINK_QPL),   # our demo drink (not on their sheet)
 ]
-DRINK_ON_HAND = {"coke": 36, "sprite": 8, "diet_coke": 30, "water": 40, "siciliana_orange": 18,
-                 "siciliana_limonata": 18, "fresca": 20, "sparkling_water": 24, "ice_tea_peach": 14,
-                 "ice_tea_lemon": 14, "pineapple_juice": 5}
+DRINK_ON_HAND = {"coke": 31, "sprite": 5, "diet_coke": 28, "water": 44, "siciliana_orange": 35,
+                 "siciliana_limonata": 35, "fresca": 16, "sparkling_water": 28, "ice_tea_peach": 15,
+                 "ice_tea_lemon": 31, "pineapple_juice": 5}
 DRINK_START_COUNT = 24   # fallback for a drink missing from DRINK_ON_HAND
 
 # What an Italian piadina shop with an espresso bar also stocks (Casa Piada-style), beyond the pizza
