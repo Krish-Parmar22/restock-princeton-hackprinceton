@@ -42,7 +42,7 @@ def main() -> None:
         shop_items = {r["id"]: r["name"] for r in c.execute("SELECT id, name FROM items").fetchall()}
     seed(a.url, reset=True)
     with connect(a.url) as c:
-        # the seeded week runs through tonight; drop anything after "now" or it eats stock as the clock passes
+        # the seeded week runs through today; drop anything after "now" or it eats stock as the clock passes
         c.execute("DELETE FROM grab_events WHERE t_start > now()")
         c.execute("DELETE FROM pos_sales WHERE ts > now()")
         for name, (unit, cost) in EXTRA_ITEMS.items():

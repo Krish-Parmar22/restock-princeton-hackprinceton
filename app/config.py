@@ -31,7 +31,6 @@ class Settings:
     # How d1 is asked: "auto" (per box: counted items like cans get exact counts, bulk food gets
     # pinch/handful), or force "pizza" / "drinks" for every box.
     scene: str = os.getenv("SCENE", "auto")
-    # Base32 secret shared with the owner's authenticator app (scripts/setup_authenticator.py).
     # Where the live Excel sheet is written after every change (the owner opens this file).
     sheet_path: Path = Path(os.getenv("SHEET_PATH", str(ROOT / "exports" / "Inventory.xlsx"))).resolve()
     # Daily reorder-plan text at this shop-local time (America/New_York), "HH:MM". "" = off.

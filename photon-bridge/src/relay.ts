@@ -105,7 +105,7 @@ export class Relay {
     store.seen(ev.chatId, ev.platform, ev.sender, ev.ts);
     if (!ev.text.trim() && ev.images.length === 0) return; // reactions, typing, empty content
 
-    // Never log message bodies: owners text authenticator codes (security review, Nov 14).
+    // Never log message bodies: they are the owner's private texts.
     this.log("inbound", { chat: ev.chatId, chars: ev.text.length, images: ev.images.length });
     await outbox.typing?.(ev.chatId, ev.platform, true).catch(() => {});
 
