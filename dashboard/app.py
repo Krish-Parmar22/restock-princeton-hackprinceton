@@ -206,15 +206,18 @@ if orders_list:
         } for o in orders_list]), hide_index=True, width="stretch",
             column_config={"Cost": st.column_config.NumberColumn(format="$%.2f")})
 
-# ---------- needs your OK ----------
+# ---------- camera grabs: every real grab today, confident or not ----------
 try:
-    flagged = load("grabs", day, "flagged")
+    all_grabs = load("grabs", day, "all")
 except ApiError as e:
-    flagged = []
+    all_grabs = []
     st.error(str(e))
-st.subheader(f"Needs your OK ({len(flagged)})")
-if not flagged:
-    st.caption(f"Nothing to check for {day:%b %-d}. The camera was sure about every grab.")
+real = sorted((g for g in all_grabs if not str(g["grab_id"]).startswith("syn-")),   # seeded demo week stays out
+              key=lambda g: str(g["t_start"]), reverse=True)[:20]
+flagged = [g for g in real if g["status"] == "flagged"]
+st.subheader(f"Camera grabs ({len(real)}) · {len(flagged)} need your OK")
+if not real:
+    st.caption(f"No camera grabs yet for {day:%b %-d}.")
 items = sorted({r["item"] for r in inventory})
 def _confirm(g, action, item, qty, msg):
     try:
@@ -226,9 +229,16 @@ def _confirm(g, action, item, qty, msg):
         st.error(str(e))
 
 
-for g in flagged:
-    with st.expander(grab_caption(g), expanded=len(flagged) <= 3):
-        show_frames(g, f"flag-{g['grab_id']}")
+for g in real:
+    sure = g["status"] in ("logged", "confirmed")
+    badge = ("✅ Counted automatically" if g["status"] == "logged" else "✅ Confirmed by owner") if sure else "⚠️ Needs your OK"
+    with st.expander(f"{badge} · {grab_caption(g)}", expanded=False):
+        show_frames(g, f"grab-{g['grab_id']}")
+        if sure:
+            st.caption(f"The camera was {g['confidence']:.0%} sure: {label(g.get('action'))} "
+                       f"{label(g.get('qty_label'))} {label(g.get('item'))}. Stock already updated."
+                       if g.get("confidence") is not None else "Counted.")
+            continue
         units = {r["item"]: r["unit"] for r in inventory}
         it = g.get("item") or g["zone"]
         counted = units.get(it) == "each"
