@@ -53,7 +53,7 @@ def test_export_cli_api_down(tmp_path, capsys):
 
 
 def test_first_tab_is_casa_piadas_own_sheet(tmp_path):
-    """Their 'Example Inventory.xlsx' (Hoja 1), cell for cell: they can adopt it with no change."""
+    """The restaurant's sheet layout (Hoja 1): they can adopt it with no change."""
     from datetime import date as _d
 
     from excel import build_workbook
